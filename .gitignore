@@ -1,0 +1,4 @@
+# backups the tool writes
+TOW2-backup-*/
+TOW2-*/
+*.bin
