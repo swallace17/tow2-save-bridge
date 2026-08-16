@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -57,30 +58,73 @@ public sealed partial class MainWindow : Window
         LoadSaves();
     }
 
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    // The window is sized in LOGICAL units and scaled by the monitor DPI, because
+    // AppWindow.Resize takes physical pixels while layout is measured logically.
+    // These dimensions are what the two-column skill grid needs; they are used for
+    // both the startup size and the minimum drag size.
+    private const int LogicalW = 980;
+    private const int LogicalH = 660;
+
+    [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
-    /// <summary>
-    /// AppWindow.Resize takes PHYSICAL pixels, but layout sizes are logical. On a
-    /// 150% display a "1150px" window is only ~767 logical units wide, which isn't
-    /// enough for the two-column skill grid. Size in logical units and scale by DPI.
-    /// </summary>
+    [DllImport("Comctl32.dll", SetLastError = true)]
+    private static extern bool SetWindowSubclass(IntPtr hWnd, SubclassProc proc, uint id, IntPtr refData);
+
+    [DllImport("Comctl32.dll")]
+    private static extern IntPtr DefSubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    private delegate IntPtr SubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam,
+                                         uint id, IntPtr refData);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT { public int X, Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MINMAXINFO
+    {
+        public POINT ptReserved, ptMaxSize, ptMaxPosition, ptMinTrackSize, ptMaxTrackSize;
+    }
+
+    private const uint WM_GETMINMAXINFO = 0x0024;
+    private SubclassProc? _subclass;   // field, so the delegate isn't collected
+
+    private double DpiScale(IntPtr hwnd)
+    {
+        uint dpi = GetDpiForWindow(hwnd);
+        return dpi == 0 ? 1.0 : dpi / 96.0;
+    }
+
     private void SizeToContent()
     {
-        const int logicalW = 980;   // saves pane + two skill columns, with margin
-        const int logicalH = 660;
-
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        uint dpi = GetDpiForWindow(hwnd);
-        double scale = dpi == 0 ? 1.0 : dpi / 96.0;
+        double scale = DpiScale(hwnd);
 
         var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
             AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
 
-        int w = Math.Min((int)(logicalW * scale), (int)(area.WorkArea.Width * 0.95));
-        int h = Math.Min((int)(logicalH * scale), (int)(area.WorkArea.Height * 0.92));
+        AppWindow.Resize(new Windows.Graphics.SizeInt32(
+            Math.Min((int)(LogicalW * scale), (int)(area.WorkArea.Width  * 0.95)),
+            Math.Min((int)(LogicalH * scale), (int)(area.WorkArea.Height * 0.92))));
 
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(w, h));
+        // Clamp how small the user can drag it. Recomputed per message so the limit
+        // stays correct if the window moves to a monitor with different scaling.
+        _subclass = MinSizeProc;
+        SetWindowSubclass(hwnd, _subclass, 1, IntPtr.Zero);
+    }
+
+    private IntPtr MinSizeProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam,
+                               uint id, IntPtr refData)
+    {
+        if (msg == WM_GETMINMAXINFO && lParam != IntPtr.Zero)
+        {
+            double scale = DpiScale(hWnd);
+            var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
+            mmi.ptMinTrackSize.X = (int)(LogicalW * scale);
+            mmi.ptMinTrackSize.Y = (int)(LogicalH * scale);
+            Marshal.StructureToPtr(mmi, lParam, false);
+        }
+        return DefSubclassProc(hWnd, msg, wParam, lParam);
     }
 
     private void Say(string message, InfoBarSeverity severity)
