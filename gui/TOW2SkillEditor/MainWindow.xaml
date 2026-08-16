@@ -62,7 +62,9 @@
 
                         <ItemsRepeater x:Name="SkillItems">
                             <ItemsRepeater.Layout>
-                                <UniformGridLayout MinItemWidth="248" MinItemHeight="34"
+                                <!-- capped at 2 so a maximized window doesn't sprawl to 3-4 columns -->
+                                <UniformGridLayout MinItemWidth="236" MinItemHeight="34"
+                                                   MaximumRowsOrColumns="2" Orientation="Horizontal"
                                                    MinColumnSpacing="24" MinRowSpacing="2" />
                             </ItemsRepeater.Layout>
                             <ItemsRepeater.ItemTemplate>

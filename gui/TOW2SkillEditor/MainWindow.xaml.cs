@@ -46,14 +46,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
-        // Resize takes physical pixels, so a fixed size lands tiny on a high-DPI
-        // display and the skill grid never gets wide enough for two columns.
-        // Size against the actual work area instead.
-        var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
-            AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(
-            Math.Min(1150, (int)(area.WorkArea.Width * 0.72)),
-            Math.Min(880,  (int)(area.WorkArea.Height * 0.80))));
+        SizeToContent();
 
         SaveList.ItemsSource = _saves;
         SkillItems.ItemsSource = _skills;
@@ -62,6 +55,32 @@ public sealed partial class MainWindow : Window
             _skills.Add(new SkillVM { Name = SaveIo.SkillNames[i], Offset = 236 + 4 * i });
 
         LoadSaves();
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+    /// <summary>
+    /// AppWindow.Resize takes PHYSICAL pixels, but layout sizes are logical. On a
+    /// 150% display a "1150px" window is only ~767 logical units wide, which isn't
+    /// enough for the two-column skill grid. Size in logical units and scale by DPI.
+    /// </summary>
+    private void SizeToContent()
+    {
+        const int logicalW = 980;   // saves pane + two skill columns, with margin
+        const int logicalH = 660;
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        uint dpi = GetDpiForWindow(hwnd);
+        double scale = dpi == 0 ? 1.0 : dpi / 96.0;
+
+        var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
+            AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
+
+        int w = Math.Min((int)(logicalW * scale), (int)(area.WorkArea.Width * 0.95));
+        int h = Math.Min((int)(logicalH * scale), (int)(area.WorkArea.Height * 0.92));
+
+        AppWindow.Resize(new Windows.Graphics.SizeInt32(w, h));
     }
 
     private void Say(string message, InfoBarSeverity severity)
