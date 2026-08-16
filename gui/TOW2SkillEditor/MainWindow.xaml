@@ -19,7 +19,7 @@
                        Text="Outer Worlds 2 &#8212; Skill Editor" />
         </Grid>
 
-        <Grid Grid.Row="1" ColumnDefinitions="320,*" Padding="16,4,16,0" ColumnSpacing="16">
+        <Grid Grid.Row="1" ColumnDefinitions="264,*" Padding="16,4,16,0" ColumnSpacing="18">
 
             <!-- ============ saves ============ -->
             <Grid Grid.Column="0" RowDefinitions="Auto,*">
@@ -31,11 +31,17 @@
                           Background="{ThemeResource LayerFillColorDefaultBrush}"
                           BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                           BorderThickness="1">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="MinHeight" Value="0" />
+                            <Setter Property="Padding" Value="10,4" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
                     <ListView.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Padding="4,8" Spacing="2">
-                                <TextBlock Text="{Binding Character}" FontWeight="SemiBold" FontSize="13.5" />
-                                <TextBlock Text="{Binding Subtitle}" FontSize="11.5" Opacity="0.6"
+                            <StackPanel Spacing="0">
+                                <TextBlock Text="{Binding Character}" FontWeight="SemiBold" FontSize="12.5" />
+                                <TextBlock Text="{Binding Subtitle}" FontSize="10.5" Opacity="0.55"
                                            FontFamily="{StaticResource MonoFont}" />
                             </StackPanel>
                         </DataTemplate>
@@ -56,20 +62,21 @@
 
                         <ItemsRepeater x:Name="SkillItems">
                             <ItemsRepeater.Layout>
-                                <UniformGridLayout MinItemWidth="270" MinItemHeight="56"
-                                                   MinColumnSpacing="16" MinRowSpacing="6" />
+                                <UniformGridLayout MinItemWidth="248" MinItemHeight="34"
+                                                   MinColumnSpacing="24" MinRowSpacing="2" />
                             </ItemsRepeater.Layout>
                             <ItemsRepeater.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid ColumnDefinitions="*,124" ColumnSpacing="12">
-                                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="1">
-                                            <TextBlock Text="{Binding Name}" FontSize="13.5" />
-                                            <TextBlock Text="{Binding OffsetLabel}" FontSize="10.5" Opacity="0.45"
-                                                       FontFamily="{StaticResource MonoFont}" />
-                                        </StackPanel>
-                                        <NumberBox Grid.Column="1"
+                                    <Grid ColumnDefinitions="*,Auto,88" ColumnSpacing="8" Height="32">
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="13"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Text="{Binding OffsetLabel}" FontSize="10.5"
+                                                   Opacity="0.38" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource MonoFont}" />
+                                        <NumberBox Grid.Column="2"
                                                    Value="{Binding Value, Mode=TwoWay}"
                                                    Minimum="0" Maximum="999"
+                                                   Height="30" VerticalAlignment="Center"
                                                    SpinButtonPlacementMode="Compact"
                                                    SmallChange="1" LargeChange="10" />
                                     </Grid>
@@ -78,20 +85,20 @@
                         </ItemsRepeater>
 
                         <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                Margin="0,4,12,4" />
+                                Margin="0,6,0,2" />
 
-                        <Grid ColumnDefinitions="*,132" ColumnSpacing="12" Margin="0,0,12,0">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="1">
-                                <TextBlock Text="Points Available" FontSize="13.5" FontWeight="SemiBold" />
-                                <TextBlock Text="payload +337 &#183; u8" FontSize="10.5" Opacity="0.45"
-                                           FontFamily="{StaticResource MonoFont}" />
-                            </StackPanel>
-                            <NumberBox x:Name="PointsBox" Grid.Column="1" Minimum="0" Maximum="255"
+                        <Grid ColumnDefinitions="*,Auto,88" ColumnSpacing="8" Height="32">
+                            <TextBlock Grid.Column="0" Text="Points Available" FontSize="13" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="+337" FontSize="10.5" Opacity="0.38"
+                                       VerticalAlignment="Center" FontFamily="{StaticResource MonoFont}" />
+                            <NumberBox x:Name="PointsBox" Grid.Column="2" Minimum="0" Maximum="255"
+                                       Height="30" VerticalAlignment="Center"
                                        SpinButtonPlacementMode="Compact" SmallChange="1" LargeChange="5" />
                         </Grid>
 
-                        <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.55" Margin="0,4,12,0"
-                                   Text="Values are the stored base. Tagged skills (starred in game) display 2 higher, so write your target minus 2 for those." />
+                        <TextBlock TextWrapping="Wrap" FontSize="11.5" Opacity="0.5" Margin="0,2,0,0"
+                                   Text="Values are the stored base. Tagged skills display 2 higher in game &#8212; write your target minus 2 for those." />
 
                     </StackPanel>
                 </ScrollViewer>

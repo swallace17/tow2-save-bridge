@@ -13,7 +13,7 @@ public sealed class SkillVM : INotifyPropertyChanged
 {
     public string Name { get; init; } = "";
     public int Offset { get; init; }
-    public string OffsetLabel => $"payload +{Offset} · u32";
+    public string OffsetLabel => $"+{Offset}";
 
     private double _value;
     public double Value
@@ -45,7 +45,15 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(1020, 760));
+
+        // Resize takes physical pixels, so a fixed size lands tiny on a high-DPI
+        // display and the skill grid never gets wide enough for two columns.
+        // Size against the actual work area instead.
+        var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
+            AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
+        AppWindow.Resize(new Windows.Graphics.SizeInt32(
+            Math.Min(1150, (int)(area.WorkArea.Width * 0.72)),
+            Math.Min(880,  (int)(area.WorkArea.Height * 0.80))));
 
         SaveList.ItemsSource = _saves;
         SkillItems.ItemsSource = _skills;
@@ -83,7 +91,10 @@ public sealed partial class MainWindow : Window
             Say($"No saves found in {SaveIo.Root}", InfoBarSeverity.Warning);
             return;
         }
-        SaveList.SelectedIndex = 0;
+
+        // prefer a manual save -- autosaves can't be cloned, so they're a poor default
+        var manual = _saves.FirstOrDefault(r => r.Slot.Length == 32 && r.Slot.All(Uri.IsHexDigit));
+        SaveList.SelectedItem = manual ?? _saves[0];
     }
 
     private string? SelectedSlot => (SaveList.SelectedItem as SaveRow)?.Slot;
@@ -105,8 +116,9 @@ public sealed partial class MainWindow : Window
             CloneFirst.IsEnabled = !autosave;
             if (autosave) CloneFirst.IsChecked = false;
 
-            Say($"{data.Magic} record at offset {data.Record}, payload {data.PayloadLen} bytes." +
-                (autosave ? "  Autosaves cannot be cloned — edits apply in place." : ""),
+            Say(autosave
+                    ? $"{data.Magic} @{data.Record} · {data.PayloadLen} B — autosave, edits apply in place"
+                    : $"{data.Magic} @{data.Record} · {data.PayloadLen} B",
                 InfoBarSeverity.Informational);
         }
         catch (Exception ex)
