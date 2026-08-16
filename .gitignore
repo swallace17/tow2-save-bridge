@@ -1,4 +1,9 @@
-# backups the tool writes
+# backups the tools write
 TOW2-backup-*/
 TOW2-*/
 *.bin
+
+# .NET build output
+[Bb]in/
+[Oo]bj/
+*.user
