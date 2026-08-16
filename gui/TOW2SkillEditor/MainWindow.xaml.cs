@@ -157,6 +157,8 @@ public sealed partial class MainWindow : Window
         Status.IsOpen = true;
     }
 
+    private void ClearStatus() => Status.IsOpen = false;
+
     private void LoadSaves()
     {
         _saves.Clear();
@@ -203,22 +205,22 @@ public sealed partial class MainWindow : Window
             CloneFirst.IsEnabled = !autosave;
             if (autosave) CloneFirst.IsChecked = false;
 
-            Say(autosave
-                    ? $"{data.Magic} @{data.Record} · {data.PayloadLen} B — autosave, edits apply in place"
-                    : $"{data.Magic} @{data.Record} · {data.PayloadLen} B",
-                InfoBarSeverity.Informational);
+            RecordInfo.Text = $"{data.Magic} @{data.Record} · {data.PayloadLen} B";
+
+            if (autosave)
+                Say("Autosave — it cannot be copied, so edits apply to it directly.",
+                    InfoBarSeverity.Warning);
+            else
+                ClearStatus();
         }
         catch (Exception ex)
         {
+            RecordInfo.Text = "";
             Say(ex.Message, InfoBarSeverity.Error);
         }
     }
 
-    private void Reload_Click(object sender, RoutedEventArgs e)
-    {
-        LoadSaves();
-        Say("Reloaded from disk.", InfoBarSeverity.Informational);
-    }
+    private void Reload_Click(object sender, RoutedEventArgs e) => LoadSaves();
 
     private async void Apply_Click(object sender, RoutedEventArgs e)
     {
