@@ -50,14 +50,21 @@
             </Grid>
 
             <!-- ============ editor ============ -->
-            <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*">
+            <Grid Grid.Column="1" RowDefinitions="Auto,Auto,Auto,*">
 
-                <TextBlock Grid.Row="0" Text="SKILLS" Style="{StaticResource Eyebrow}" Margin="4,0,0,8" />
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="0,0,0,14">
+                    <TextBlock Grid.Column="0" Text="NAME" Style="{StaticResource Eyebrow}"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="NameBox" Grid.Column="1" Height="32" MaxLength="40"
+                             PlaceholderText="Name shown in the load list" />
+                </Grid>
 
-                <InfoBar x:Name="Status" Grid.Row="1" IsOpen="False" IsClosable="False"
+                <TextBlock Grid.Row="1" Text="SKILLS" Style="{StaticResource Eyebrow}" Margin="4,0,0,8" />
+
+                <InfoBar x:Name="Status" Grid.Row="2" IsOpen="False" IsClosable="False"
                          Margin="0,0,0,12" CornerRadius="8" />
 
-                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="12">
 
                         <ItemsRepeater x:Name="SkillItems">

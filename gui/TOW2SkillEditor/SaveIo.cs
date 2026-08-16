@@ -79,9 +79,15 @@ public static class SaveIo
         return list.OrderByDescending(s => s.Saved).ToList();
     }
 
-    private static List<string> MetaStrings(byte[] m)
+    private readonly record struct MetaString(int Pos, int Declared, string Value);
+
+    /// <summary>
+    /// Length-prefixed ASCII strings in Metadata.dat, in order:
+    /// GMHF, &lt;slot&gt;, &lt;character&gt;, &lt;slot&gt;/SaveGameScreenshot.png, version, Release
+    /// </summary>
+    private static List<MetaString> MetaStringsWithPos(byte[] m)
     {
-        var found = new List<string>();
+        var found = new List<MetaString>();
         for (int i = 0; i + 4 < m.Length; i++)
         {
             int declared = BitConverter.ToInt32(m, i);
@@ -90,10 +96,75 @@ public static class SaveIo
             for (int j = 0; ok && j < declared - 1; j++)
                 if (m[i + 4 + j] < 0x20 || m[i + 4 + j] > 0x7E) ok = false;
             if (!ok) continue;
-            found.Add(Encoding.ASCII.GetString(m, i + 4, declared - 1));
+            found.Add(new MetaString(i, declared, Encoding.ASCII.GetString(m, i + 4, declared - 1)));
             i += 4 + declared - 1;
         }
         return found;
+    }
+
+    private static List<string> MetaStrings(byte[] m) =>
+        MetaStringsWithPos(m).Select(s => s.Value).ToList();
+
+    private const int NameIndex = 2;
+    public const int MaxNameLength = 40;
+
+    public static string ReadName(string slot)
+    {
+        var md = File.ReadAllBytes(Path.Combine(Root, slot, "Metadata.dat"));
+        var strings = MetaStringsWithPos(md);
+        return strings.Count > NameIndex ? strings[NameIndex].Value : "";
+    }
+
+    /// <summary>
+    /// Rewrites the name shown in the load list. Unlike the skill edits this changes a
+    /// string length, so Metadata.dat is rebuilt around it rather than patched in place.
+    /// Only Metadata.dat is touched -- the character name inside SaveGame.dat is a
+    /// separate string and is left alone.
+    /// </summary>
+    public static void Rename(string slot, string newName)
+    {
+        newName = (newName ?? "").Trim();
+        if (newName.Length == 0)
+            throw new ArgumentException("Name cannot be empty.");
+        if (newName.Length > MaxNameLength)
+            throw new ArgumentException($"Name must be {MaxNameLength} characters or fewer.");
+        if (newName.Any(c => c < 0x20 || c > 0x7E))
+            throw new ArgumentException("Name must be plain ASCII (no accents or emoji).");
+
+        string mdPath = Path.Combine(Root, slot, "Metadata.dat");
+        var md = File.ReadAllBytes(mdPath);
+        var strings = MetaStringsWithPos(md);
+        if (strings.Count <= NameIndex)
+            throw new InvalidDataException("Could not find the name field in Metadata.dat.");
+
+        var target = strings[NameIndex];
+        if (target.Value == newName) return;
+
+        var body = Encoding.ASCII.GetBytes(newName);
+        using var ms = new MemoryStream();
+        ms.Write(md, 0, target.Pos);                                  // everything before
+        ms.Write(BitConverter.GetBytes(body.Length + 1));             // new length prefix
+        ms.Write(body);
+        ms.WriteByte(0);
+        int after = target.Pos + 4 + target.Declared;
+        ms.Write(md, after, md.Length - after);                       // everything after
+        var rebuilt = ms.ToArray();
+
+        // The metadata carries the state file's inflated size. Renaming shifts where that
+        // field sits, so confirm it survived the rebuild and is still unambiguous.
+        int inflated = Inflate(File.ReadAllBytes(Path.Combine(Root, slot, "SaveGame.dat"))).Length;
+        int hits = 0;
+        for (int i = 0; i + 4 <= rebuilt.Length; i++)
+            if (BitConverter.ToInt32(rebuilt, i) == inflated) hits++;
+        if (hits != 1)
+            throw new InvalidDataException(
+                $"After rename the size field for {inflated} appears {hits} times, expected 1. Not written.");
+
+        var check = MetaStringsWithPos(rebuilt);
+        if (check.Count != strings.Count || check[NameIndex].Value != newName)
+            throw new InvalidDataException("Rebuilt metadata did not re-parse correctly. Not written.");
+
+        File.WriteAllBytes(mdPath, rebuilt);
     }
 
     // ---------------------------------------------------------- compression
@@ -252,7 +323,7 @@ public static class SaveIo
     /// Metadata.dat (standalone, and in "&lt;Slot&gt;/SaveGameScreenshot.png"); both are 32
     /// chars, so the swap is length-neutral. SaveGame.dat holds no slot reference.
     /// </summary>
-    public static string Clone(string slot, string? label = null)
+    public static string Clone(string slot)
     {
         if (slot.Length != 32 || !slot.All(Uri.IsHexDigit))
             throw new ArgumentException("Only 32-hex manual saves can be cloned (not autosaves).");
@@ -270,18 +341,6 @@ public static class SaveIo
         int patched = 0;
         foreach (int at in IndexOfAll(md, oldB)) { newB.CopyTo(md, at); patched++; }
         if (patched == 0) throw new InvalidDataException("Slot name not found in Metadata.dat.");
-
-        // optional load-list label, same length so nothing shifts
-        if (!string.IsNullOrEmpty(label))
-        {
-            var strings = MetaStrings(md);
-            if (strings.Count > 2)
-            {
-                var who = Encoding.ASCII.GetBytes(strings[2]);
-                var lab = Encoding.ASCII.GetBytes(label.PadRight(who.Length).Substring(0, who.Length));
-                foreach (int at in IndexOfAll(md, who)) { lab.CopyTo(md, at); break; }
-            }
-        }
 
         File.WriteAllBytes(Path.Combine(dst, "Metadata.dat"), md);
         return newSlot;

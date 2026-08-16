@@ -47,7 +47,19 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
-        SizeToContent();
+        InstallMinSize();
+
+        // Size once the content is live, so XamlRoot.RasterizationScale reflects the
+        // monitor the window actually landed on.
+        if (Content is FrameworkElement root)
+        {
+            void OnReady(object s, RoutedEventArgs e)
+            {
+                root.Loaded -= OnReady;
+                SizeToContent();
+            }
+            root.Loaded += OnReady;
+        }
 
         SaveList.ItemsSource = _saves;
         SkillItems.ItemsSource = _skills;
@@ -60,10 +72,12 @@ public sealed partial class MainWindow : Window
 
     // The window is sized in LOGICAL units and scaled by the monitor DPI, because
     // AppWindow.Resize takes physical pixels while layout is measured logically.
-    // These dimensions are what the two-column skill grid needs; they are used for
-    // both the startup size and the minimum drag size.
-    private const int LogicalW = 980;
-    private const int LogicalH = 660;
+    //
+    // Width is the sum of the actual layout constants, so it fits the content with
+    // no dead space:  264 saves pane + 18 gap + 32 padding + (2 x 236 + 24) grid
+    //                 + ~18 scrollbar allowance
+    private const int LogicalW = 832;
+    private const int LogicalH = 612;   // +46 for the name row
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -95,22 +109,31 @@ public sealed partial class MainWindow : Window
         return dpi == 0 ? 1.0 : dpi / 96.0;
     }
 
+    private void InstallMinSize()
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _subclass = MinSizeProc;
+        SetWindowSubclass(hwnd, _subclass, 1, IntPtr.Zero);
+    }
+
+    /// <summary>
+    /// Sized from the XamlRoot's rasterization scale rather than GetDpiForWindow at
+    /// construction: on a mixed-DPI desktop the window isn't on its final monitor yet
+    /// when the constructor runs, so the same logical size came out at different
+    /// physical sizes between launches.
+    /// </summary>
     private void SizeToContent()
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        double scale = DpiScale(hwnd);
+        double scale = (Content as FrameworkElement)?.XamlRoot?.RasterizationScale ?? DpiScale(hwnd);
+        if (scale <= 0) scale = 1.0;
 
         var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
-            AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
+            AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Nearest);
 
         AppWindow.Resize(new Windows.Graphics.SizeInt32(
             Math.Min((int)(LogicalW * scale), (int)(area.WorkArea.Width  * 0.95)),
             Math.Min((int)(LogicalH * scale), (int)(area.WorkArea.Height * 0.92))));
-
-        // Clamp how small the user can drag it. Recomputed per message so the limit
-        // stays correct if the window moves to a monitor with different scaling.
-        _subclass = MinSizeProc;
-        SetWindowSubclass(hwnd, _subclass, 1, IntPtr.Zero);
     }
 
     private IntPtr MinSizeProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam,
@@ -174,6 +197,7 @@ public sealed partial class MainWindow : Window
             var data = SaveIo.Read(slot);
             for (int i = 0; i < _skills.Count; i++) _skills[i].Value = data.Values[i];
             PointsBox.Value = data.Points;
+            NameBox.Text = SaveIo.ReadName(slot);
 
             bool autosave = !(slot.Length == 32 && slot.All(Uri.IsHexDigit));
             CloneFirst.IsEnabled = !autosave;
@@ -210,13 +234,24 @@ public sealed partial class MainWindow : Window
         var values = _skills.Select(s => (int)Math.Round(s.Value)).ToArray();
         int points = (int)Math.Round(double.IsNaN(PointsBox.Value) ? 0 : PointsBox.Value);
 
+        string wantedName = (NameBox.Text ?? "").Trim();
+        if (wantedName.Length == 0)
+        {
+            Say("Name cannot be empty.", InfoBarSeverity.Warning);
+            return;
+        }
+
         try
         {
             string target = slot;
             if (CloneFirst.IsChecked == true)
-                target = SaveIo.Clone(slot, "EDITED COPY");
+                target = SaveIo.Clone(slot);
 
             string backup = SaveIo.Write(target, values, points);
+
+            // after the skill write, so the size-field check runs against the final payload
+            if (wantedName != SaveIo.ReadName(target))
+                SaveIo.Rename(target, wantedName);
 
             LoadSaves();
             var row = _saves.FirstOrDefault(r => r.Slot == target);
