@@ -52,11 +52,17 @@
             <!-- ============ editor ============ -->
             <Grid Grid.Column="1" RowDefinitions="Auto,Auto,Auto,*">
 
-                <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="0,0,0,14">
-                    <TextBlock Grid.Column="0" Text="NAME" Style="{StaticResource Eyebrow}"
-                               VerticalAlignment="Center" />
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="12" Margin="0,0,0,14">
+                    <TextBlock Grid.Column="0" Text="SAVE" Style="{StaticResource Eyebrow}"
+                               VerticalAlignment="Center"
+                               ToolTipService.ToolTip="The label shown in the load list. Stored in Metadata.dat." />
                     <TextBox x:Name="NameBox" Grid.Column="1" Height="32" MaxLength="40"
-                             PlaceholderText="Name shown in the load list" />
+                             PlaceholderText="Load-list label" />
+                    <TextBlock Grid.Column="2" Text="CHARACTER" Style="{StaticResource Eyebrow}"
+                               VerticalAlignment="Center"
+                               ToolTipService.ToolTip="The character's name in game. Stored in the save payload; changing its length requires five internal size and pointer fixups." />
+                    <TextBox x:Name="CharBox" Grid.Column="3" Height="32" MaxLength="40"
+                             PlaceholderText="In-game name" />
                 </Grid>
 
                 <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="4,0,0,8">

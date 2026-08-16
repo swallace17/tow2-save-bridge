@@ -200,6 +200,7 @@ public sealed partial class MainWindow : Window
             for (int i = 0; i < _skills.Count; i++) _skills[i].Value = data.Values[i];
             PointsBox.Value = data.Points;
             NameBox.Text = SaveIo.ReadName(slot);
+            CharBox.Text = SaveIo.ReadCharacterName(slot);
 
             bool autosave = !(slot.Length == 32 && slot.All(Uri.IsHexDigit));
             CloneFirst.IsEnabled = !autosave;
@@ -237,9 +238,10 @@ public sealed partial class MainWindow : Window
         int points = (int)Math.Round(double.IsNaN(PointsBox.Value) ? 0 : PointsBox.Value);
 
         string wantedName = (NameBox.Text ?? "").Trim();
-        if (wantedName.Length == 0)
+        string wantedChar = (CharBox.Text ?? "").Trim();
+        if (wantedName.Length == 0 || wantedChar.Length == 0)
         {
-            Say("Name cannot be empty.", InfoBarSeverity.Warning);
+            Say("Save name and character name cannot be empty.", InfoBarSeverity.Warning);
             return;
         }
 
@@ -251,7 +253,11 @@ public sealed partial class MainWindow : Window
 
             string backup = SaveIo.Write(target, values, points);
 
-            // after the skill write, so the size-field check runs against the final payload
+            // character first: it changes the payload length and rewrites the metadata
+            // size field, which the save-name rebuild then has to preserve.
+            if (wantedChar != SaveIo.ReadCharacterName(target))
+                SaveIo.RenameCharacter(target, wantedChar);
+
             if (wantedName != SaveIo.ReadName(target))
                 SaveIo.Rename(target, wantedName);
 

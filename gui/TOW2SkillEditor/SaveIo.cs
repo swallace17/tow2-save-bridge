@@ -316,6 +316,194 @@ public static class SaveIo
         return backup;
     }
 
+    // ------------------------------------------------- character name (payload)
+
+    // Absolute offsets into the live Player.dat payload holding u64 self-pointers.
+    // Both reference string-table entries later in the entry, so an edit that changes
+    // the payload length must shift any that sit past the edit point. Confirmed by
+    // diffing game-written saves: when the entry grew 572 bytes, +32 grew by 572.
+    private static readonly int[] SelfPointerOffsets = { 24, 32 };
+
+    private readonly record struct LiveEntry(int Prefix, int SizePos, int Size, int Payload);
+
+    private static LiveEntry FindLivePlayerDat(byte[] raw)
+    {
+        // Saves carry a base layer nested inside a SavedState.dat container, so the
+        // LAST Player.dat entry is the live one.
+        var name = Encoding.ASCII.GetBytes("Player.dat");
+        int found = -1;
+        for (int i = 0; i + 15 < raw.Length; i++)
+        {
+            if (BitConverter.ToInt32(raw, i) != 11) continue;
+            bool ok = true;
+            for (int j = 0; j < 10; j++) if (raw[i + 4 + j] != name[j]) { ok = false; break; }
+            if (ok && raw[i + 14] == 0) found = i;
+        }
+        if (found < 0) throw new InvalidDataException("No Player.dat entry found.");
+        int sizePos = found + 15;
+        return new LiveEntry(found, sizePos, BitConverter.ToInt32(raw, sizePos), sizePos + 4);
+    }
+
+    /// <summary>Does rel point at a [u32 id][u32 len][ascii][NUL] string-table entry?</summary>
+    private static bool ResolvesToString(byte[] raw, int payload, int limit, long rel, out string value)
+    {
+        value = "";
+        if (rel < 8 || rel + 8 >= limit) return false;
+        int L = BitConverter.ToInt32(raw, payload + (int)rel + 4);
+        if (L < 3 || L > 160 || rel + 8 + L > limit) return false;
+        if (raw[payload + (int)rel + 8 + L - 1] != 0) return false;
+        for (int k = 0; k < L - 1; k++)
+        {
+            byte c = raw[payload + (int)rel + 8 + k];
+            if (c < 0x20 || c > 0x7E) return false;
+        }
+        value = Encoding.ASCII.GetString(raw, payload + (int)rel + 8, L - 1);
+        return true;
+    }
+
+    /// <summary>
+    /// Locates the character-name string inside the live Player.dat by structure rather
+    /// than by matching the metadata name, since the two can diverge once either is
+    /// edited. Signature: a CSHF record whose length is exactly 21 + L, where L is the
+    /// u32 at payload+16 and an ASCII string of L bytes (NUL-terminated) follows at +20.
+    /// Verified to match exactly once across every sampled save.
+    /// </summary>
+    private static (int StrPos, string Value) FindCharacterName(byte[] raw, LiveEntry live)
+    {
+        var hits = new List<(int, string)>();
+        int end = live.Payload + live.Size;
+        for (int i = live.Payload; i + 25 < end && i + 25 < raw.Length; i++)
+        {
+            if (raw[i] != 5 || raw[i + 1] != 0 || raw[i + 2] != 0 || raw[i + 3] != 0 || raw[i + 8] != 0) continue;
+            if (raw[i + 4] != 'C' || raw[i + 5] != 'S' || raw[i + 6] != 'H' || raw[i + 7] != 'F') continue;
+
+            int recLen = BitConverter.ToInt32(raw, i + 21);
+            int pl = i + 25;
+            if (recLen < 24 || recLen > 200 || pl + recLen > raw.Length) continue;
+
+            int L = BitConverter.ToInt32(raw, pl + 16);
+            if (L < 2 || L > 64 || recLen != 21 + L) continue;
+            if (raw[pl + 20 + L - 1] != 0) continue;
+
+            bool ascii = true;
+            for (int k = 0; k < L - 1; k++)
+            {
+                byte c = raw[pl + 20 + k];
+                if (c < 0x20 || c > 0x7E) { ascii = false; break; }
+            }
+            if (!ascii) continue;
+
+            hits.Add((pl + 16, Encoding.ASCII.GetString(raw, pl + 20, L - 1)));
+        }
+        if (hits.Count != 1)
+            throw new InvalidDataException(
+                $"Expected exactly one character-name record, found {hits.Count}. " +
+                "The format may differ on this game build.");
+        return hits[0];
+    }
+
+    public static string ReadCharacterName(string slot)
+    {
+        var raw = Inflate(File.ReadAllBytes(Path.Combine(Root, slot, "SaveGame.dat")));
+        return FindCharacterName(raw, FindLivePlayerDat(raw)).Value;
+    }
+
+    /// <summary>
+    /// Renames the character inside SaveGame.dat. This changes the payload length, so
+    /// five values must stay consistent: the CSHF record length, the two u64
+    /// self-pointers in the PSHF preamble, the Player.dat entry size, and the metadata's
+    /// inflated-size field. Missing the pointers loads the character as DefaultPlayerMax.
+    /// </summary>
+    public static void RenameCharacter(string slot, string newName)
+    {
+        newName = (newName ?? "").Trim();
+        if (newName.Length == 0) throw new ArgumentException("Character name cannot be empty.");
+        if (newName.Length > MaxNameLength)
+            throw new ArgumentException($"Character name must be {MaxNameLength} characters or fewer.");
+        if (newName.Any(c => c < 0x20 || c > 0x7E))
+            throw new ArgumentException("Character name must be plain ASCII.");
+
+        string dir = Path.Combine(Root, slot);
+        string sgPath = Path.Combine(dir, "SaveGame.dat");
+        string mdPath = Path.Combine(dir, "Metadata.dat");
+
+        var raw = Inflate(File.ReadAllBytes(sgPath));
+        var live = FindLivePlayerDat(raw);
+        var (strPos, oldName) = FindCharacterName(raw, live);
+        if (oldName == newName) return;
+
+        int oldFieldLen = 4 + oldName.Length + 1;   // length prefix + string + NUL
+        int nameRel = strPos - live.Payload;
+        int delta = newName.Length - oldName.Length;
+
+        // enclosing CSHF record
+        int recPos = -1;
+        for (int i = strPos; i >= live.Payload; i--)
+        {
+            if (raw[i] != 5 || raw[i + 1] != 0 || raw[i + 2] != 0 || raw[i + 3] != 0 || raw[i + 8] != 0) continue;
+            bool up = true;
+            for (int k = 4; k < 8; k++) if (raw[i + k] < (byte)'A' || raw[i + k] > (byte)'Z') { up = false; break; }
+            if (up) { recPos = i; break; }
+        }
+        if (recPos < 0) throw new InvalidDataException("No chunk record encloses the name.");
+        int recLen = BitConverter.ToInt32(raw, recPos + 21);
+        if (strPos + oldFieldLen > recPos + 25 + recLen)
+            throw new InvalidDataException("The name straddles the end of its record.");
+
+        // the self-pointers must look like pointers BEFORE we touch anything
+        var ptrVals = new long[SelfPointerOffsets.Length];
+        for (int i = 0; i < SelfPointerOffsets.Length; i++)
+        {
+            ptrVals[i] = BitConverter.ToInt64(raw, live.Payload + SelfPointerOffsets[i]);
+            if (!ResolvesToString(raw, live.Payload, live.Size, ptrVals[i], out _))
+                throw new InvalidDataException(
+                    $"The value at Player.dat+{SelfPointerOffsets[i]} is not a self-pointer in this save. " +
+                    "Refusing to rename -- the format may differ on this build.");
+        }
+
+        // rebuild
+        using var ms = new MemoryStream();
+        ms.Write(raw, 0, strPos);
+        ms.Write(BitConverter.GetBytes(newName.Length + 1));
+        ms.Write(Encoding.ASCII.GetBytes(newName));
+        ms.WriteByte(0);
+        int after = strPos + oldFieldLen;
+        ms.Write(raw, after, raw.Length - after);
+        var built = ms.ToArray();
+
+        // the five fixups
+        BitConverter.GetBytes(recLen + delta).CopyTo(built, recPos + 21);
+        BitConverter.GetBytes(live.Size + delta).CopyTo(built, live.SizePos);
+        for (int i = 0; i < SelfPointerOffsets.Length; i++)
+            if (ptrVals[i] > nameRel && ptrVals[i] < live.Size)
+                BitConverter.GetBytes(ptrVals[i] + delta).CopyTo(built, live.Payload + SelfPointerOffsets[i]);
+
+        // verify: pointers still resolve to the same strings
+        int newSize = live.Size + delta;
+        for (int i = 0; i < SelfPointerOffsets.Length; i++)
+        {
+            long v = BitConverter.ToInt64(built, live.Payload + SelfPointerOffsets[i]);
+            ResolvesToString(raw, live.Payload, live.Size, ptrVals[i], out string was);
+            if (!ResolvesToString(built, live.Payload, newSize, v, out string now) || now != was)
+                throw new InvalidDataException(
+                    $"Self-pointer at +{SelfPointerOffsets[i]} no longer resolves to \"{was}\". Not written.");
+        }
+        if (built.Length != raw.Length + delta)
+            throw new InvalidDataException("Payload length math is wrong. Not written.");
+
+        // verify: metadata size field is unambiguous, then update it
+        var md = File.ReadAllBytes(mdPath);
+        var hits = new List<int>();
+        for (int i = 0; i + 4 <= md.Length; i++)
+            if (BitConverter.ToInt32(md, i) == raw.Length) hits.Add(i);
+        if (hits.Count != 1)
+            throw new InvalidDataException($"Metadata size field: expected 1 match, found {hits.Count}.");
+        BitConverter.GetBytes(built.Length).CopyTo(md, hits[0]);
+
+        File.WriteAllBytes(sgPath, Deflate(built));
+        File.WriteAllBytes(mdPath, md);
+    }
+
     // ---------------------------------------------------------------- clone
 
     /// <summary>
