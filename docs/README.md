@@ -15,6 +15,7 @@ marked as such.
 | [05 — Editing rules](05-editing-rules.md) | What is safe to change, and the five fixups a length change needs |
 | [06 — Investigation methods](06-methods.md) | Techniques that worked, and one that looked convincing but wasn't |
 | [07 — Open questions](07-open-questions.md) | What is still unmapped |
+| [08 — Prior art](08-prior-art.md) | What already existed, and what is genuinely unclaimed |
 
 ## The short version
 

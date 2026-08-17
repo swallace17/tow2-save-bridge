@@ -96,6 +96,12 @@ live layer — not damage from Xbox→Steam conversion.
 > copy is stale; on a converted save its skill array reads all zeros. Editing the wrong copy
 > silently does nothing.
 
+> **The magics are UE `FString`s, not bare magics.** `05 00 00 00` + `"CSHF"` + `00` is a
+> length-prefixed Unreal string occupying 9 bytes, where the declared length includes the
+> NUL. The same scheme appears in The Outer Worlds 1 — see [08 — Prior art](08-prior-art.md).
+> So both header forms below open with a 9-byte name field, leaving 14 and 16 bytes of
+> actual fields.
+
 ## Section headers — 23 bytes
 
 Magics seen: `SGDF` (file root), `PSHF` (first thing inside `Player.dat`).
