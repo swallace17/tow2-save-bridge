@@ -80,6 +80,34 @@ bonus is applied at load.
 
 Which skills are tagged is not readable from the array.
 
+## Bits (currency)
+
+A `u32` in the live `Player.dat`. **Its offset is not stable** — it sits after a
+variable-length structure inside a record that grows during play. Measured across saves of a
+single character:
+
+| save | `u32` at rel 6145 | |
+|---|---|---|
+| `9779206D`, `Autosave00`, `Autosave02` | 5239 | ✅ bits |
+| `Autosave01` | 5197 | ✅ bits |
+| `7D5D8FAA` (earlier session) | 6311 | ✅ bits |
+| `F49775934` | 131071 | ❌ `0x1FFFF`, unrelated |
+| `4755539744`, `A990D10E` | 0 | ❌ unrelated |
+
+The enclosing record grew 10,062 → 14,387 bytes across the session and the field's
+record-relative offset drifted 2125 → 2070 → 2029 with it. That record contains **no strings
+at all**, so there is no anchor to locate the field structurally.
+
+> **A hardcoded offset would silently edit the wrong bytes** in two of the eight saves
+> sampled. Don't.
+
+**Workaround — locate by current value.** Read the figure the game shows, search the live
+`Player.dat` for that `u32`, and require exactly one match. Realistic amounts are unique
+(5197, 6311 and 5239 each matched once); round numbers are not (100 matched eight times, so
+the tooling refuses and asks you to spend a little and retry).
+
+Editing is otherwise a Class 1 length-neutral poke — verified in game by writing 987,654.
+
 ## Character name
 
 A length-prefixed string inside a `CSHF` record. Locate it **structurally**, not by matching
