@@ -22,7 +22,7 @@
         <Grid Grid.Row="1" ColumnDefinitions="264,*" Padding="16,4,16,0" ColumnSpacing="18">
 
             <!-- ============ saves ============ -->
-            <Grid Grid.Column="0" RowDefinitions="Auto,*">
+            <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
                 <TextBlock Grid.Row="0" Text="SAVES" Style="{StaticResource Eyebrow}" Margin="4,0,0,8" />
                 <ListView x:Name="SaveList" Grid.Row="1"
                           SelectionMode="Single"
@@ -47,6 +47,17 @@
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
+
+                <!-- sits with the saves list because that is what it populates -->
+                <Button x:Name="RecoverBtn" Grid.Row="2" Margin="0,8,0,0"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Click="Recover_Click"
+                        ToolTipService.ToolTip="Convert saves the game wrote to Xbox connected storage back into the Steam format.">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE896;" FontSize="14" />
+                        <TextBlock Text="Recover from Xbox" FontSize="13" />
+                    </StackPanel>
+                </Button>
             </Grid>
 
             <!-- ============ editor ============ -->
@@ -143,8 +154,6 @@
             <CheckBox x:Name="CloneFirst" Grid.Column="0" VerticalAlignment="Center" IsChecked="True"
                       Content="Edit a copy, leaving the original untouched" />
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                <Button x:Name="RecoverBtn" Content="Recover from Xbox…" Click="Recover_Click"
-                        ToolTipService.ToolTip="Convert saves that the game wrote to Xbox connected storage back into the Steam format." />
                 <Button x:Name="ReloadBtn" Content="Reload" Click="Reload_Click" />
                 <Button x:Name="ApplyBtn" Content="Apply changes" Click="Apply_Click"
                         Style="{StaticResource AccentButtonStyle}" />
