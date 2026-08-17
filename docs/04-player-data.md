@@ -190,6 +190,52 @@ payload +0    01 02 05 00
 Note the name also appears in the **base layer** copy of `Player.dat`. Editing only the live
 copy is sufficient and is what the tooling does.
 
+## The PlayerInfoComponent class list — a registry, not the acquired set
+
+After a `"PlayerInfoComponent"` string in the live `Player.dat` sits a long, uniform list of
+triples:
+
+```
+[u32 0][str assetPath][str className]
+```
+
+repeated with no count prefix and no terminator — it simply stops when the next `u32` is not
+zero, followed by `"/Script/Arkansas"`. In a sampled mid-game save it held **36 entries over
+2,961 bytes** at `+23175`.
+
+```
+Perks         4     Perk_Player_SpaceRanger, Perk_Player_Pickpocket,
+                    0220_Perk_Reward_ScrabblesPlushie, 02_Perk_Reward_RegionCollection_Tier1
+Traits        3     SuaveTrait, WittyTrait, SicklyTrait
+Backgrounds   1     ProfessorBackground
+Flaws        28     Flaw_Sys_Consumerism, Flaw_Sys_Kleptomania, …
+```
+
+> **Do not treat this as the character's perks and flaws.** Two things rule that out:
+>
+> - **All 28 flaws are present**, in both the base and live layers, unchanged. No character
+>   has 28 flaws — that is the full flaw catalogue.
+> - **The order is not stable.** Between the base and live layers `Flaw_Sys_BadKnees` moves
+>   relative to `ProfessorBackground`, which is what set iteration looks like, not an
+>   ordered acquisition log.
+>
+> It reads as a registry of classes the component references. Adding an entry would very
+> likely register a class without granting anything.
+
+It *does* respond to acquisition, which makes it a useful signal. The base layer of the same
+save carries 35 entries and 3 perks; the live layer has 36 and 4, differing by exactly
+`02_Perk_Reward_RegionCollection_Tier1` — a perk taken between the two snapshots. So a save
+file with a base layer contains its own before/after pair for free.
+
+**Where the actual grant state lives is not yet found.** It is presumably an array of
+instances or indices referencing these classes. Finding it needs a tight save-pair — save,
+take a perk, save again — diffed with `lab/Diff-TOW2Save.ps1`.
+
+Note also that adding to this list would be a **Class 2 edit**: entries are 90–120 bytes of
+string data, so an insert changes the payload length and needs the full five fixups from
+[05 — Editing rules](05-editing-rules.md), including the self-pointer at `Player.dat +32`
+(which targets 43472, past the list at ~23175, so it would need adjusting).
+
 ## What is not in the save
 
 **The Outer Worlds 2 has no attributes.** They were removed from the first game's design.

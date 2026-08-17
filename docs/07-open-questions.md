@@ -31,17 +31,25 @@ Things that are unmapped, unverified, or would be the obvious next work.
 
 ## Unmapped game systems
 
-Perks, Traits, Flaws and Background are all present as asset-path references but not located
-in specific records.
+Perks, Traits, Flaws and Background appear as asset-path references in the
+[PlayerInfoComponent class list](04-player-data.md#the-playerinfocomponent-class-list--a-registry-not-the-acquired-set),
+but **that list is a class registry, not the acquired set** — it carries all 28 flaws in
+every save and its ordering is unstable. The real grant state has not been found.
 
-- **Traits and Background** are set at character creation and never change, so a save-pair
-  diff won't isolate them. The tractable approach is a length-neutral swap of one asset path
-  for another of identical length (e.g. `SuaveTrait` → `WittyTrait`, both 10 characters) and
-  see what changes in game.
-- **Perks** are acquired during play, so a tight save-pair *will* isolate one. That also
-  answers whether adding a perk means inserting a path string (a Class 2 edit) or flipping a
-  flag in an existing table (Class 1).
-- **Flaws** should behave like perks; 28 paths already appear in the file.
+The next concrete step is a **tight save-pair**: save, take a perk, save again without moving,
+then diff with `lab/Diff-TOW2Save.ps1`. Two things make this tractable:
+
+- The class registry gives a known-good marker to check the diff against — the new perk's
+  asset path will appear there, so any *other* changed record in the same save is a candidate
+  for the actual grant state.
+- A save that carries a base layer already contains a free before/after pair, since the base
+  snapshot predates recent acquisitions. That is how the registry's behaviour was established
+  without playing at all.
+
+Traits and Background are set at character creation and never change, so a save-pair will not
+isolate them. The tractable approach there is a length-neutral swap of one asset path for
+another of identical length (`SuaveTrait` → `WittyTrait`, both 10 characters) on a clone, and
+see what the game reports.
 
 ## Unverified assumptions
 
