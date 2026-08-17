@@ -81,9 +81,21 @@ file, which sends everyone down the wrong path.
 
 ## Format documentation
 
-[FORMAT.md](FORMAT.md) documents what was reverse-engineered: the GDK `wgs` container
-layout, the `GMHF` metadata structure and its variable-offset size field, the `SGDF`/`PSHF`/
-`CSHF` chunk format, and the exact Xbox↔local delta. Open questions are listed there too.
+[`docs/`](docs/) documents the save format in depth — the GDK `wgs` container layout, the
+`GMHF` metadata structure, the entry/section/record hierarchy inside `SaveGame.dat`, the
+decoded player data, and the rules for editing a save without corrupting it. Investigation
+methods and open questions are recorded alongside, so the analysis is picked up rather than
+repeated.
+
+Start at [docs/README.md](docs/README.md).
+
+## Also in this repo
+
+`lab/` and `gui/` contain exploratory tooling built while mapping the format — a
+record-level save differ, a skill editor, and a WinUI 3 front end for it. They are
+**experimental and undocumented**; the recovery tool above is the supported part of this
+repo. Read [docs/05 — Editing rules](docs/05-editing-rules.md) before using them on a save
+you care about.
 
 ## Scope
 
