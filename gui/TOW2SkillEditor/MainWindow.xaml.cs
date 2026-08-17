@@ -77,7 +77,7 @@ public sealed partial class MainWindow : Window
     // no dead space:  264 saves pane + 18 gap + 32 padding + (2 x 236 + 24) grid
     //                 + ~18 scrollbar allowance
     private const int LogicalW = 832;
-    private const int LogicalH = 690;   // + name row + bits row
+    private const int LogicalH = 612;   // + name row
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -202,11 +202,6 @@ public sealed partial class MainWindow : Window
             NameBox.Text = SaveIo.ReadName(slot);
             CharBox.Text = SaveIo.ReadCharacterName(slot);
 
-            // Bits can't be read back, so clear it on every selection change --
-            // otherwise a figure typed for one save would be applied to another.
-            BitsCurrent.Value = double.NaN;
-            BitsNew.Value = double.NaN;
-
             bool autosave = !(slot.Length == 32 && slot.All(Uri.IsHexDigit));
             CloneFirst.IsEnabled = !autosave;
             if (autosave) CloneFirst.IsChecked = false;
@@ -266,12 +261,6 @@ public sealed partial class MainWindow : Window
             if (wantedName != SaveIo.ReadName(target))
                 SaveIo.Rename(target, wantedName);
 
-            // Bits: located by the value the user read off the game, not by offset.
-            int bitsFrom = double.IsNaN(BitsCurrent.Value) ? 0 : (int)Math.Round(BitsCurrent.Value);
-            int bitsTo   = double.IsNaN(BitsNew.Value)     ? 0 : (int)Math.Round(BitsNew.Value);
-            if (bitsFrom > 0 && bitsTo > 0 && bitsFrom != bitsTo)
-                SaveIo.SetValueByCurrent(target, bitsFrom, bitsTo);
-
             LoadSaves();
             var row = _saves.FirstOrDefault(r => r.Slot == target);
             if (row is not null) SaveList.SelectedItem = row;
@@ -295,4 +284,5 @@ public sealed partial class MainWindow : Window
         }
     }
 }
+
 

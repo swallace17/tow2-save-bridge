@@ -316,63 +316,6 @@ public static class SaveIo
         return backup;
     }
 
-    // ----------------------------------------------------- locate-by-value edits
-
-    /// <summary>
-    /// Bits (currency) is a u32 in the live Player.dat, but its offset is NOT stable:
-    /// it sits after a variable-length structure, and the enclosing record grows during
-    /// play. Measured across saves of one character it landed at rel 6145 three times and
-    /// on unrelated data twice, so a hardcoded offset would silently edit the wrong bytes.
-    ///
-    /// There is no string anchor anywhere in that record to locate it structurally, so the
-    /// caller supplies the value currently shown in game and we edit that — requiring
-    /// exactly one match. Realistic amounts are unique (5197, 6311, 5239 each matched once);
-    /// round numbers are not (100 matched eight times).
-    /// </summary>
-    public static int[] FindValueOffsets(string slot, int value)
-    {
-        var raw = Inflate(File.ReadAllBytes(Path.Combine(Root, slot, "SaveGame.dat")));
-        var live = FindLivePlayerDat(raw);
-        var hits = new List<int>();
-        for (int r = 0; r + 4 <= live.Size; r++)
-            if (BitConverter.ToInt32(raw, live.Payload + r) == value) hits.Add(r);
-        return hits.ToArray();
-    }
-
-    /// <summary>Length-neutral poke of a u32 located by its current value.</summary>
-    public static void SetValueByCurrent(string slot, int currentValue, int newValue)
-    {
-        if (currentValue <= 0) throw new ArgumentException("Enter the value currently shown in game.");
-        if (newValue < 0) throw new ArgumentException("Value cannot be negative.");
-        if (currentValue == newValue) return;
-
-        string sgPath = Path.Combine(Root, slot, "SaveGame.dat");
-        var raw = Inflate(File.ReadAllBytes(sgPath));
-        int before = raw.Length;
-        var live = FindLivePlayerDat(raw);
-
-        var hits = new List<int>();
-        for (int r = 0; r + 4 <= live.Size; r++)
-            if (BitConverter.ToInt32(raw, live.Payload + r) == currentValue) hits.Add(r);
-
-        if (hits.Count == 0)
-            throw new InvalidDataException(
-                $"No field in this save currently holds {currentValue}. Check the value shown in game.");
-        if (hits.Count > 1)
-            throw new InvalidDataException(
-                $"{currentValue} appears {hits.Count} times, so the right one is ambiguous. " +
-                "Spend or earn a small amount in game, save, and try again with the new figure.");
-
-        BitConverter.GetBytes(newValue).CopyTo(raw, live.Payload + hits[0]);
-        if (raw.Length != before) throw new InvalidDataException("Payload length changed -- aborted.");
-
-        File.WriteAllBytes(sgPath, Deflate(raw));
-
-        var check = Inflate(File.ReadAllBytes(sgPath));
-        if (BitConverter.ToInt32(check, live.Payload + hits[0]) != newValue)
-            throw new InvalidDataException("Read-back mismatch after write.");
-    }
-
     // ------------------------------------------------- character name (payload)
 
     // Absolute offsets into the live Player.dat payload holding u64 self-pointers.

@@ -101,12 +101,40 @@ at all**, so there is no anchor to locate the field structurally.
 > **A hardcoded offset would silently edit the wrong bytes** in two of the eight saves
 > sampled. Don't.
 
-**Workaround — locate by current value.** Read the figure the game shows, search the live
-`Player.dat` for that `u32`, and require exactly one match. Realistic amounts are unique
-(5197, 6311 and 5239 each matched once); round numbers are not (100 matched eight times, so
-the tooling refuses and asks you to spend a little and retry).
+Editing it is otherwise trivial — a Class 1 length-neutral poke, verified in game by writing
+987,654. **The obstacle is purely locating it**, and it is not shipped in the tooling for
+that reason.
 
-Editing is otherwise a Class 1 length-neutral poke — verified in game by writing 987,654.
+### Why it is hard to locate, and what would solve it
+
+The field drifts on **both** sides, so neither end of the record anchors it:
+
+| save | record length | bits offset from record start | from record end |
+|---|---|---|---|
+| `7D5D8FAA` | 10,062 | 2125 | 7937 |
+| `9779206D` | 14,387 | 2029 | 12358 |
+
+Things that were tried and do not work:
+
+- **Fixed offset** — drifts, as above.
+- **String anchor** — the record contains no strings at all.
+- **Suffix marker.** The sequence `2, 1, 64, 68353` follows bits at a variable but principled
+  distance: `[bits][u32 count][count × 12-byte entries][marker]`, so count 0 puts the marker
+  at +8 and count 1 at +20. Walking back from the marker and requiring `u32 == count`
+  self-validates — but it matches `count = 0` spuriously whenever the preceding `u32` happens
+  to be zero, and the marker is not unique (one save had two).
+
+What would actually solve it is **decoding the record's field-stream encoding** and walking
+forward from the record header. Its payload begins:
+
+```
+7D5D8FAA:  01 02 0B 5B  00 00 00 0F  10 00 00 00  00 00 00 02 …
+9779206D:  01 02 0B 83  00 00 00 6F  10 00 00 00  00 00 00 02 …
+```
+
+The two share a clear skeleton with a few varying bytes, and fields appear to be 4-aligned
+from `payload+1` (both bits offsets are ≡ 1 mod 4). That is a bounded piece of work and it
+would unlock every other field in this record, not just bits.
 
 ## Character name
 

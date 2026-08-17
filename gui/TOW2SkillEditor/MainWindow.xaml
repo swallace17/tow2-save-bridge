@@ -121,27 +121,6 @@
                         <TextBlock TextWrapping="Wrap" FontSize="11.5" Opacity="0.5" Margin="0,2,0,0"
                                    Text="Values are the stored base. Tagged skills display 2 higher in game &#8212; write your target minus 2 for those." />
 
-                        <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                Margin="0,10,0,2" />
-
-                        <Grid ColumnDefinitions="*,Auto,110,Auto,110" ColumnSpacing="8" Height="32">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="Bits" FontSize="13" FontWeight="SemiBold" />
-                            </StackPanel>
-                            <TextBlock Grid.Column="1" Text="in game" FontSize="10.5" Opacity="0.45"
-                                       VerticalAlignment="Center" FontFamily="{StaticResource MonoFont}" />
-                            <NumberBox x:Name="BitsCurrent" Grid.Column="2" Minimum="0" Maximum="99999999"
-                                       Height="30" VerticalAlignment="Center" SpinButtonPlacementMode="Hidden"
-                                       PlaceholderText="current" />
-                            <TextBlock Grid.Column="3" Text="&#8594;" FontSize="13" Opacity="0.5"
-                                       VerticalAlignment="Center" />
-                            <NumberBox x:Name="BitsNew" Grid.Column="4" Minimum="0" Maximum="99999999"
-                                       Height="30" VerticalAlignment="Center" SpinButtonPlacementMode="Hidden"
-                                       PlaceholderText="new" />
-                        </Grid>
-
-                        <TextBlock TextWrapping="Wrap" FontSize="11.5" Opacity="0.5" Margin="0,2,0,0"
-                                   Text="Bits has no fixed location in the save, so it cannot be read automatically. Enter the figure the game shows you and it will be found by value &#8212; leave blank to skip. Round numbers may be ambiguous; if so, spend a little and retry." />
 
                     </StackPanel>
                 </ScrollViewer>
