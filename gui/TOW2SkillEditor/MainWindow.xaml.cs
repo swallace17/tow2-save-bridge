@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Markup;
 
 namespace TOW2SkillEditor;
 
@@ -237,6 +238,112 @@ public sealed partial class MainWindow : Window
 
     private void Reload_Click(object sender, RoutedEventArgs e) => LoadSaves();
 
+    // ------------------------------------------------------ Xbox -> Steam recovery
+
+    private sealed class XboxRow
+    {
+        public SaveIo.XboxSave Save { get; init; } = null!;
+        public bool Selected { get; set; } = true;
+        public string Title => Save.Character;
+        public string Detail => Save.Display;
+    }
+
+    private async void Recover_Click(object sender, RoutedEventArgs e)
+    {
+        if (!SaveIo.XboxStoreExists())
+        {
+            Say("No Xbox container store found — nothing to recover. This is normal if you have "
+              + "never played signed into an Xbox account.", InfoBarSeverity.Informational);
+            return;
+        }
+
+        List<SaveIo.XboxSave> found;
+        try { found = SaveIo.ListXboxSaves(); }
+        catch (Exception ex) { Say(ex.Message, InfoBarSeverity.Error); return; }
+
+        if (found.Count == 0)
+        {
+            Say("The Xbox store exists but holds no readable saves.", InfoBarSeverity.Warning);
+            return;
+        }
+
+        var rows = found.Select(s => new XboxRow { Save = s }).ToList();
+
+        var list = new ListView
+        {
+            ItemsSource = rows,
+            SelectionMode = ListViewSelectionMode.Multiple,
+            MaxHeight = 260,
+            ItemTemplate = (DataTemplate)XamlReader.Load(
+                """
+                <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+                  <StackPanel Padding="0,4" Spacing="1">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" />
+                    <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.6" />
+                  </StackPanel>
+                </DataTemplate>
+                """)
+        };
+        foreach (var r in rows) list.SelectedItems.Add(r);
+
+        var panel = new StackPanel { Spacing = 12 };
+        panel.Children.Add(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Text = "Signing into an Xbox account makes the game write saves to Xbox connected "
+                 + "storage, leaving the Steam folder with only screenshots. These are converted "
+                 + "into the Steam format so Steam Cloud, Deck and GeForce Now can see them.\n\n"
+                 + "The Xbox store is only read from, never modified."
+        });
+        panel.Children.Add(list);
+
+        var dlg = new ContentDialog
+        {
+            Title = "Recover saves from Xbox",
+            Content = panel,
+            PrimaryButtonText = "Recover selected",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = Content.XamlRoot
+        };
+
+        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var chosen = list.SelectedItems.Cast<XboxRow>().Select(r => r.Save).ToList();
+        if (chosen.Count == 0) { Say("Nothing selected.", InfoBarSeverity.Informational); return; }
+
+        if (SaveIo.GameIsRunning())
+        {
+            Say("The Outer Worlds 2 is running. Close it before recovering saves.", InfoBarSeverity.Error);
+            return;
+        }
+
+        try
+        {
+            string backup = SaveIo.BackupBeforeRecovery();
+            int ok = 0;
+            var failures = new List<string>();
+            foreach (var s in chosen)
+            {
+                try { SaveIo.RecoverSave(s); ok++; }
+                catch (Exception ex) { failures.Add($"{s.Slot}: {ex.Message}"); }
+            }
+
+            LoadSaves();
+
+            if (failures.Count == 0)
+                Say($"Recovered {ok} save{(ok == 1 ? "" : "s")}. Exit Steam fully, launch the game, "
+                  + $"and decline the Xbox sign-in.  Backup: {backup}", InfoBarSeverity.Success);
+            else
+                Say($"Recovered {ok}, failed {failures.Count}. {string.Join("  |  ", failures)}",
+                    InfoBarSeverity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Say(ex.Message, InfoBarSeverity.Error);
+        }
+    }
+
     private async void Apply_Click(object sender, RoutedEventArgs e)
     {
         var slot = SelectedSlot;
@@ -300,6 +407,7 @@ public sealed partial class MainWindow : Window
         }
     }
 }
+
 
 
 

@@ -333,6 +333,176 @@ public static class SaveIo
         return backup;
     }
 
+    // ------------------------------------------------ Xbox -> Steam recovery
+
+    /// <summary>A save sitting in the Xbox container store, recoverable to the Steam format.</summary>
+    public sealed class XboxSave
+    {
+        public string Slot { get; init; } = "";
+        public string Character { get; init; } = "";
+        public DateTime Saved { get; init; }
+        public long Bytes { get; init; }
+        public bool ExistsLocally { get; init; }
+        public string ContainerDir { get; init; } = "";
+        public string MetaBlob { get; init; } = "";
+        public string StateBlob { get; init; } = "";
+        public string ShotBlob { get; init; } = "";
+        public string Display => $"{Character}  ·  {Saved:MMM d HH:mm:ss}  ·  {Bytes / 1024.0:0} KB"
+                               + (ExistsLocally ? "   (already in Steam — will be overwritten)" : "");
+    }
+
+    // The local format opens with this 23-byte SGDF section header; the Xbox blob replaces
+    // it with a bare 4-byte value. Everything from the "Player.dat" entry on is identical.
+    private static readonly byte[] SgdfHeader =
+    {
+        0x05,0x00,0x00,0x00, 0x53,0x47,0x44,0x46,0x00, 0x01,0x00,0x00,0x00,
+        0x27,0x00, 0x0A,0x02,0x00,0x00, 0xF4,0x03,0x00,0x00
+    };
+    private const int XboxPrefixLen = 4;
+
+    private static string? FindXboxStore()
+    {
+        string pkg = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Packages", "Microsoft.OE-Arkansas_8wekyb3d8bbwe", "SystemAppData", "wgs");
+        if (!Directory.Exists(pkg)) return null;
+        // the per-user container folder, e.g. 000901F44D0C97F1_00000000...
+        return Directory.GetDirectories(pkg)
+            .Where(d => Path.GetFileName(d).Contains('_'))
+            .OrderByDescending(Directory.GetLastWriteTime)
+            .FirstOrDefault();
+    }
+
+    public static bool XboxStoreExists() => FindXboxStore() != null;
+
+    /// <summary>Resolves the blobs named by the newest container.N in a container folder.</summary>
+    private static Dictionary<string, string> ReadContainer(string dir)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var cf = Directory.GetFiles(dir, "container.*")
+                          .OrderByDescending(f => int.TryParse(
+                              Path.GetExtension(f).TrimStart('.'), out int n) ? n : -1)
+                          .FirstOrDefault();
+        if (cf == null) return map;
+
+        var b = File.ReadAllBytes(cf);
+        if (b.Length < 8) return map;
+        int count = BitConverter.ToInt32(b, 4);
+
+        for (int i = 0; i < count; i++)
+        {
+            int off = 8 + i * 160;
+            if (off + 160 > b.Length) break;
+            string name = Encoding.Unicode.GetString(b, off, 128).TrimEnd('\0');
+            // two GUIDs -- a double buffer; take whichever blob actually exists
+            foreach (int g in new[] { 128, 144 })
+            {
+                var gb = new byte[16];
+                Array.Copy(b, off + g, gb, 0, 16);
+                string cand = Path.Combine(dir, new Guid(gb).ToString("N").ToUpperInvariant());
+                if (File.Exists(cand)) { map[name] = cand; break; }
+            }
+        }
+        return map;
+    }
+
+    public static List<XboxSave> ListXboxSaves()
+    {
+        var list = new List<XboxSave>();
+        string? store = FindXboxStore();
+        if (store == null) return list;
+
+        foreach (var dir in Directory.GetDirectories(store))
+        {
+            var blobs = ReadContainer(dir);
+            if (!blobs.TryGetValue("Metadata.dat", out var meta)) continue;
+            if (!blobs.TryGetValue("SavedState.dat", out var state)) continue;
+            blobs.TryGetValue("SaveGameScreenshot.png", out var shot);
+
+            var strings = MetaStringsWithPos(File.ReadAllBytes(meta));
+            if (strings.Count < 3) continue;
+
+            string slot = strings[1].Value;
+            list.Add(new XboxSave
+            {
+                Slot = slot,
+                Character = strings[2].Value,
+                Saved = File.GetLastWriteTime(state),
+                Bytes = new FileInfo(state).Length,
+                ExistsLocally = File.Exists(Path.Combine(Root, slot, "SaveGame.dat")),
+                ContainerDir = dir,
+                MetaBlob = meta,
+                StateBlob = state,
+                ShotBlob = shot ?? ""
+            });
+        }
+        return list.OrderByDescending(s => s.Saved).ToList();
+    }
+
+    /// <summary>
+    /// Converts one Xbox container save into the local Steam format. The Xbox store is
+    /// opened read-only and never modified.
+    /// </summary>
+    public static void RecoverSave(XboxSave save)
+    {
+        var blob = File.ReadAllBytes(save.StateBlob);
+        var raw = Inflate(blob);
+
+        if (raw.Length < 20 || Encoding.ASCII.GetString(raw, 8, 10) != "Player.dat")
+            throw new InvalidDataException(
+                $"{save.Slot}: unexpected payload layout — expected a Player.dat entry at offset 8.");
+
+        // swap the 4-byte Xbox prefix for the 23-byte SGDF header
+        var converted = new byte[SgdfHeader.Length + raw.Length - XboxPrefixLen];
+        SgdfHeader.CopyTo(converted, 0);
+        Array.Copy(raw, XboxPrefixLen, converted, SgdfHeader.Length, raw.Length - XboxPrefixLen);
+
+        // the metadata records the INFLATED size; it must be updated by the same delta
+        var md = File.ReadAllBytes(save.MetaBlob);
+        var hits = new List<int>();
+        for (int i = 0; i + 4 <= md.Length; i++)
+            if (BitConverter.ToInt32(md, i) == raw.Length) hits.Add(i);
+        if (hits.Count != 1)
+            throw new InvalidDataException(
+                $"{save.Slot}: metadata size field — expected 1 match for {raw.Length}, found {hits.Count}.");
+        BitConverter.GetBytes(converted.Length).CopyTo(md, hits[0]);
+
+        string dest = Path.Combine(Root, save.Slot);
+        Directory.CreateDirectory(dest);
+        File.WriteAllBytes(Path.Combine(dest, "Metadata.dat"), md);
+        File.WriteAllBytes(Path.Combine(dest, "SaveGame.dat"), Deflate(converted));
+        if (!string.IsNullOrEmpty(save.ShotBlob))
+            File.Copy(save.ShotBlob, Path.Combine(dest, "SaveGameScreenshot.png"), true);
+
+        // a stale SavedState.dat from a failed manual attempt would be misleading
+        string stale = Path.Combine(dest, "SavedState.dat");
+        if (File.Exists(stale)) File.Delete(stale);
+
+        // verify: re-inflate and confirm the SGDF header survived the round trip
+        var check = Inflate(File.ReadAllBytes(Path.Combine(dest, "SaveGame.dat")));
+        if (check.Length != converted.Length || Encoding.ASCII.GetString(check, 4, 4) != "SGDF")
+            throw new InvalidDataException($"{save.Slot}: read-back verification failed.");
+    }
+
+    /// <summary>Backs up the Steam save folder and the Xbox store. Returns the backup path.</summary>
+    public static string BackupBeforeRecovery()
+    {
+        string bak = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            $"TOW2-recover-{DateTime.Now:yyyyMMdd-HHmmss}");
+        Directory.CreateDirectory(bak);
+        if (Directory.Exists(Root))
+        {
+            string dst = Path.Combine(bak, "SteamSaves");
+            Directory.CreateDirectory(dst);
+            foreach (var d in Directory.GetDirectories(Root))
+                CopyDir(d, Path.Combine(dst, Path.GetFileName(d)));
+            foreach (var f in Directory.GetFiles(Root))
+                File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), true);
+        }
+        return bak;
+    }
+
     // -------------------------------------------------------------- bits (currency)
 
     // Player.dat holds a list of 84-byte entries: [u32 2][u32 1][u32 id][u32 0x00010B01]

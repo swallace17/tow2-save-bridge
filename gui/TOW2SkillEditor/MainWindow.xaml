@@ -143,6 +143,8 @@
             <CheckBox x:Name="CloneFirst" Grid.Column="0" VerticalAlignment="Center" IsChecked="True"
                       Content="Edit a copy, leaving the original untouched" />
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="RecoverBtn" Content="Recover from Xbox…" Click="Recover_Click"
+                        ToolTipService.ToolTip="Convert saves that the game wrote to Xbox connected storage back into the Steam format." />
                 <Button x:Name="ReloadBtn" Content="Reload" Click="Reload_Click" />
                 <Button x:Name="ApplyBtn" Content="Apply changes" Click="Apply_Click"
                         Style="{StaticResource AccentButtonStyle}" />

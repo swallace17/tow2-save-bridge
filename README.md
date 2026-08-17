@@ -26,6 +26,24 @@ header**. This tool bridges the two.
 
 ## Usage
 
+Two ways to run it: a GUI, or the PowerShell script.
+
+### GUI
+
+`gui/TOW2SkillEditor` is a WinUI 3 app. **Recover from Xbox…** lists the saves sitting in
+the container store and converts the ones you pick; it backs up first, reads the Xbox store
+without modifying it, and verifies each converted save by re-inflating it.
+
+```powershell
+cd gui\TOW2SkillEditor
+dotnet run
+```
+
+The same app also edits skills, points, bits, the save name and the character name — see
+[docs/05 — Editing rules](docs/05-editing-rules.md) before using that on a save you care about.
+
+### Script
+
 Requires Windows and PowerShell 7+. Close the game first.
 
 ```powershell
@@ -91,11 +109,10 @@ Start at [docs/README.md](docs/README.md).
 
 ## Also in this repo
 
-`lab/` and `gui/` contain exploratory tooling built while mapping the format — a
-record-level save differ, a skill editor, and a WinUI 3 front end for it. They are
-**experimental and undocumented**; the recovery tool above is the supported part of this
-repo. Read [docs/05 — Editing rules](docs/05-editing-rules.md) before using them on a save
-you care about.
+`lab/` holds exploratory tooling built while mapping the format — a record-level save
+differ, a CLI save editor, a save cloner, and a raw field poke. It is **experimental and
+lightly documented**. Read [docs/05 — Editing rules](docs/05-editing-rules.md) before using
+any of it on a save you care about.
 
 ## Scope
 
