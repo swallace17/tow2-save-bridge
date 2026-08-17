@@ -40,6 +40,28 @@ of the state file — compressed and inflated — finds no match. Edited saves l
 and must fix them up. This is the single thing that makes editing non-trivial, and it is
 covered in [05 — Editing rules](05-editing-rules.md).
 
+## How much of this is actually understood
+
+Be clear-eyed about the coverage, because a solid grasp of the framing makes it easy to
+overestimate the rest.
+
+**The container is mapped thoroughly.** How the file is framed, how entries are delimited
+and sized, the two header shapes, how records chain, the base/live layering, and the
+self-pointers that make length edits dangerous. That is enough to navigate a save and modify
+it without corrupting it — which is what the tooling needed.
+
+**The contents are barely touched.** Twelve skill values, a points counter, a character name,
+two pointers: about **100 bytes** identified out of a 3.1 MB payload. Inventory, perks,
+traits, flaws, background, reputation, position, health, quest flags and dialogue history are
+all in there and none are located.
+
+That ratio is less bleak than it sounds, because 92.7% of the payload is per-map actor state
+(see [03 — Where the bytes go](03-savegame-container.md#where-the-bytes-go)) that an editor
+would rarely want to touch. Measured against character data rather than the whole file, the
+target is a 57 KB entry. And the remaining unknowns there are far more tractable than the
+first one was — the methods in [06](06-methods.md) mapped all twelve skills in two game
+loads once the technique was right.
+
 ## Conventions used here
 
 - `rel N` — a byte offset relative to the start of an entry's payload

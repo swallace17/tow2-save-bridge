@@ -38,6 +38,44 @@ Only `Player.dat` has been decoded. Several entries (`Quests.dat`, `GlobalVars.d
 `Factions.dat`, `Conversations.dat`) contain no chunk-record headers at all, so they use a
 different internal shape — unmapped.
 
+## Where the bytes go
+
+Measured on a mid-game save: 28 live-layer entries totalling **3,143,057 bytes**.
+
+| | bytes | share |
+|---|---|---|
+| Map / world entries (4) | 2,912,523 | **92.7%** |
+| `Conversations`, `Teams`, `Beacons`, `Quests` | 115,430 | 3.7% |
+| `Player.dat` | 57,782 | 1.8% |
+| `Companion7–12.dat` (6) | 42,252 | 1.3% |
+| Everything else (18 entries) | 15,070 | 0.5% |
+
+**The save is overwhelmingly persisted world state**, one entry per visited map. The largest
+in this sample:
+
+```
+0201_PI_P_<hash>.dat        2,236,568 bytes
+  ASHF  x 2,996             one per persisted actor
+  CSHF  x 9,121             roughly 3 per actor
+  WSHF  x 1
+  2,114 distinct strings, 445 of them Unreal blueprint classes (_C)
+```
+
+The string vocabulary is exactly what you'd expect of restored actors —
+`Accessory_Glasses_HalfMoon_C`, faction and creature blueprints, armour, weapons — so these
+entries are the engine persisting every actor it needs to rebuild: NPCs, containers, doors,
+dropped items, their positions and states.
+
+Two consequences worth knowing:
+
+- **Saves grow with places visited, not with progress.** Four maps are recorded here; a full
+  playthrough carries many more. A save that doubles in size usually means a new map, or the
+  arrival of a base layer.
+- **The interesting data is the small part.** Everything a save editor plausibly wants —
+  skills, perks, inventory, reputation, quest flags — lives in the ~7% outside the map
+  entries, and `Player.dat` is only 57 KB of it. The 92% is engine bookkeeping, and it is
+  where you would do real damage.
+
 ## Layered saves — `SavedState.dat`
 
 Saves may carry the **entire previous state as a nested container entry**:
