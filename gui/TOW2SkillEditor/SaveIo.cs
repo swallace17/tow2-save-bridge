@@ -234,6 +234,7 @@ public static class SaveIo
         public string Magic = "";
         public int[] Values = Array.Empty<int>();
         public int Points;
+        public int? Bits;            // null when the landmark isn't found -- field is disabled
     }
 
     public static SkillData Read(string slot)
@@ -256,18 +257,21 @@ public static class SaveIo
             throw new InvalidDataException(
                 $"Values at the expected offsets don't look like skills ({string.Join(", ", vals)}).");
 
+        int bitsOff = LocateBits(raw, FindLivePlayerDat(raw));
+
         return new SkillData
         {
             Record = rec,
             PayloadLen = len,
             Magic = Encoding.ASCII.GetString(raw, rec + 4, 4),
             Values = vals,
-            Points = raw[p + PointsOff]
+            Points = raw[p + PointsOff],
+            Bits = bitsOff < 0 ? null : BitConverter.ToInt32(raw, FindLivePlayerDat(raw).Payload + bitsOff)
         };
     }
 
     /// <summary>Writes values in place. Returns the backup directory.</summary>
-    public static string Write(string slot, int[] values, int points)
+    public static string Write(string slot, int[] values, int points, int? bits = null)
     {
         if (values.Length != SkillNames.Length) throw new ArgumentException("wrong skill count");
         if (points is < 0 or > 255) throw new ArgumentException("Points must be 0-255.");
@@ -292,6 +296,17 @@ public static class SaveIo
             BitConverter.GetBytes(values[i]).CopyTo(raw, p + ArrayBase + Stride * i);
         raw[p + PointsOff] = (byte)points;
 
+        if (bits.HasValue)
+        {
+            if (bits.Value < 0) throw new ArgumentException("Bits cannot be negative.");
+            var live = FindLivePlayerDat(raw);
+            int bitsOff = LocateBits(raw, live);
+            if (bitsOff < 0)
+                throw new InvalidDataException(
+                    "Could not locate the bits field in this save, so it was not changed.");
+            BitConverter.GetBytes(bits.Value).CopyTo(raw, live.Payload + bitsOff);
+        }
+
         if (raw.Length != before)
             throw new InvalidDataException("Payload length changed -- aborted.");
 
@@ -312,8 +327,62 @@ public static class SaveIo
             if (check.Values[i] != values[i])
                 throw new InvalidDataException($"Read-back mismatch on {SkillNames[i]}.");
         if (check.Points != points) throw new InvalidDataException("Read-back mismatch on Points.");
+        if (bits.HasValue && check.Bits != bits.Value)
+            throw new InvalidDataException("Read-back mismatch on Bits.");
 
         return backup;
+    }
+
+    // -------------------------------------------------------------- bits (currency)
+
+    // Player.dat holds a list of 84-byte entries: [u32 2][u32 1][u32 id][u32 0x00010B01]
+    // then 17 u32 of payload. Bits is payload[12] of one of them.
+    //
+    // The entry `id` is NOT usable as a key -- it is an allocation counter, not a
+    // meaning. Across saves of one character the ids shift by one, and a brand-new
+    // character only has ids 36-45 at all.
+    //
+    // Instead, anchor on a neighbouring entry whose payload is constant, and which sits a
+    // fixed 154 bytes before the bits entry. Verified across 12 saves spanning two
+    // sessions: exactly one match each, and the values form a clean monotonic progression
+    // (2877, 2886, 3791, 4148, 4148, 5197, 5239) ending on a figure confirmed in game.
+    private const int EntryTag = 0x00010B01;
+    private const int EntryStride = 84;
+    private static readonly int[] BitsLandmark = { 33554432, 1161527296, 0, 11, 256, 256 };
+    private const int BitsLandmarkFirstIndex = 11;   // payload index the landmark starts at
+    private const int BitsDelta = 218;               // landmark entry start -> bits u32
+
+    /// <summary>Offset of the bits u32 within the live Player.dat, or -1 if not locatable.</summary>
+    private static int LocateBits(byte[] raw, LiveEntry live)
+    {
+        int found = -1, count = 0;
+        for (int r = 0; r + EntryStride <= live.Size; r++)
+        {
+            if (BitConverter.ToInt32(raw, live.Payload + r) != 2) continue;
+            if (BitConverter.ToInt32(raw, live.Payload + r + 4) != 1) continue;
+            if (BitConverter.ToInt32(raw, live.Payload + r + 12) != EntryTag) continue;
+
+            bool ok = true;
+            for (int k = 0; k < BitsLandmark.Length; k++)
+            {
+                int idx = BitsLandmarkFirstIndex + k;
+                if (BitConverter.ToInt32(raw, live.Payload + r + 16 + 4 * idx) != BitsLandmark[k]) { ok = false; break; }
+            }
+            if (!ok) continue;
+            found = r; count++;
+        }
+        // Ambiguity means the assumption has broken -- refuse rather than guess.
+        if (count != 1) return -1;
+        int off = found + BitsDelta;
+        return off + 4 <= live.Size ? off : -1;
+    }
+
+    public static int? ReadBits(string slot)
+    {
+        var raw = Inflate(File.ReadAllBytes(Path.Combine(Root, slot, "SaveGame.dat")));
+        var live = FindLivePlayerDat(raw);
+        int off = LocateBits(raw, live);
+        return off < 0 ? null : BitConverter.ToInt32(raw, live.Payload + off);
     }
 
     // ------------------------------------------------- character name (payload)

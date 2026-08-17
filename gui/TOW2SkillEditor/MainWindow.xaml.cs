@@ -77,7 +77,7 @@ public sealed partial class MainWindow : Window
     // no dead space:  264 saves pane + 18 gap + 32 padding + (2 x 236 + 24) grid
     //                 + ~18 scrollbar allowance
     private const int LogicalW = 832;
-    private const int LogicalH = 612;   // + name row
+    private const int LogicalH = 650;   // + name row + bits row
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -202,6 +202,20 @@ public sealed partial class MainWindow : Window
             NameBox.Text = SaveIo.ReadName(slot);
             CharBox.Text = SaveIo.ReadCharacterName(slot);
 
+            // Bits has no fixed offset; if the landmark isn't found, disable rather than guess.
+            if (data.Bits.HasValue)
+            {
+                BitsBox.Value = data.Bits.Value;
+                BitsBox.IsEnabled = true;
+                BitsOffset.Text = "located";
+            }
+            else
+            {
+                BitsBox.Value = double.NaN;
+                BitsBox.IsEnabled = false;
+                BitsOffset.Text = "not found";
+            }
+
             bool autosave = !(slot.Length == 32 && slot.All(Uri.IsHexDigit));
             CloneFirst.IsEnabled = !autosave;
             if (autosave) CloneFirst.IsChecked = false;
@@ -251,7 +265,9 @@ public sealed partial class MainWindow : Window
             if (CloneFirst.IsChecked == true)
                 target = SaveIo.Clone(slot);
 
-            string backup = SaveIo.Write(target, values, points);
+            int? bits = (BitsBox.IsEnabled && !double.IsNaN(BitsBox.Value))
+                        ? (int)Math.Round(BitsBox.Value) : null;
+            string backup = SaveIo.Write(target, values, points, bits);
 
             // character first: it changes the payload length and rewrites the metadata
             // size field, which the save-name rebuild then has to preserve.
@@ -284,5 +300,6 @@ public sealed partial class MainWindow : Window
         }
     }
 }
+
 
 

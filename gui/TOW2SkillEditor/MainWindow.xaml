@@ -118,6 +118,17 @@
                                        SpinButtonPlacementMode="Compact" SmallChange="1" LargeChange="5" />
                         </Grid>
 
+                        <Grid ColumnDefinitions="*,Auto,130" ColumnSpacing="8" Height="32">
+                            <TextBlock Grid.Column="0" Text="Bits" FontSize="13" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <TextBlock x:Name="BitsOffset" Grid.Column="1" FontSize="10.5" Opacity="0.38"
+                                       VerticalAlignment="Center" FontFamily="{StaticResource MonoFont}"
+                                       ToolTipService.ToolTip="Located by a landmark entry in Player.dat, not a fixed offset &#8212; the position moves between saves." />
+                            <NumberBox x:Name="BitsBox" Grid.Column="2" Minimum="0" Maximum="999999999"
+                                       Height="30" VerticalAlignment="Center"
+                                       SpinButtonPlacementMode="Hidden" />
+                        </Grid>
+
                         <TextBlock TextWrapping="Wrap" FontSize="11.5" Opacity="0.5" Margin="0,2,0,0"
                                    Text="Values are the stored base. Tagged skills display 2 higher in game &#8212; write your target minus 2 for those." />
 

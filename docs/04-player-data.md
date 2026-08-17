@@ -80,61 +80,86 @@ bonus is applied at load.
 
 Which skills are tagged is not readable from the array.
 
+## The entry list
+
+Inside the large `CSHF` record sits a list of fixed-size **84-byte entries**:
+
+```
++0   u32   2                  constant
++4   u32   1                  constant
++8   u32   id                 see below
++12  u32   0x00010B01         constant tag
++16  …     17 × u32 payload
+```
+
+Entries are contiguous — 84 bytes apart — and a mid-game save holds ~127 of them. They look
+like per-object counters and stats.
+
+> **`id` is an allocation counter, not a meaning.** Do not key on it. Across saves of one
+> character the ids shift by one between sessions (what is id 63 in a later save is id 62 in
+> an earlier one), and a brand-new character has only ids 36–45. Keying on `id == 63` reads
+> the neighbouring entry on some saves.
+
+Common payload shape for a counter entry:
+
+```
+[0, 0, 0, 65536, 65536, -65536, 131071, 65536, 65536, 65536, 0, 0x01000000, VALUE, 1, 0, ptr, 0]
+                                                                            ^^^^^ payload[12]
+```
+
+`payload[15]` is a forward offset — usually `entryPos + 160` — into a later entry. Purpose
+unconfirmed.
+
 ## Bits (currency)
 
-A `u32` in the live `Player.dat`. **Its offset is not stable** — it sits after a
-variable-length structure inside a record that grows during play. Measured across saves of a
-single character:
+Bits is `payload[12]` of one of those entries. **Its absolute offset is not stable**: it
+moved 6049 → 6001 → 6104 → 6145 across one character's saves, because the entry list grows
+as objects are created.
 
-| save | `u32` at rel 6145 | |
-|---|---|---|
-| `9779206D`, `Autosave00`, `Autosave02` | 5239 | ✅ bits |
-| `Autosave01` | 5197 | ✅ bits |
-| `7D5D8FAA` (earlier session) | 6311 | ✅ bits |
-| `F49775934` | 131071 | ❌ `0x1FFFF`, unrelated |
-| `4755539744`, `A990D10E` | 0 | ❌ unrelated |
-
-The enclosing record grew 10,062 → 14,387 bytes across the session and the field's
-record-relative offset drifted 2125 → 2070 → 2029 with it. That record contains **no strings
-at all**, so there is no anchor to locate the field structurally.
-
-> **A hardcoded offset would silently edit the wrong bytes** in two of the eight saves
-> sampled. Don't.
-
-Editing it is otherwise trivial — a Class 1 length-neutral poke, verified in game by writing
-987,654. **The obstacle is purely locating it**, and it is not shipped in the tooling for
-that reason.
-
-### Why it is hard to locate, and what would solve it
-
-The field drifts on **both** sides, so neither end of the record anchors it:
-
-| save | record length | bits offset from record start | from record end |
-|---|---|---|---|
-| `7D5D8FAA` | 10,062 | 2125 | 7937 |
-| `9779206D` | 14,387 | 2029 | 12358 |
-
-Things that were tried and do not work:
-
-- **Fixed offset** — drifts, as above.
-- **String anchor** — the record contains no strings at all.
-- **Suffix marker.** The sequence `2, 1, 64, 68353` follows bits at a variable but principled
-  distance: `[bits][u32 count][count × 12-byte entries][marker]`, so count 0 puts the marker
-  at +8 and count 1 at +20. Walking back from the marker and requiring `u32 == count`
-  self-validates — but it matches `count = 0` spuriously whenever the preceding `u32` happens
-  to be zero, and the marker is not unique (one save had two).
-
-What would actually solve it is **decoding the record's field-stream encoding** and walking
-forward from the record header. Its payload begins:
+**Locate it by landmark.** A neighbouring entry has a fully constant payload and sits exactly
+154 bytes before the bits entry:
 
 ```
-7D5D8FAA:  01 02 0B 5B  00 00 00 0F  10 00 00 00  00 00 00 02 …
-9779206D:  01 02 0B 83  00 00 00 6F  10 00 00 00  00 00 00 02 …
+landmark payload[11..16] == [33554432, 1161527296, 0, 11, 256, 256]
+
+bits u32 = landmarkEntryPos + 218          (154 to the entry, +16 header, +48 to payload[12])
 ```
 
-The two share a clear skeleton with a few varying bytes, and fields appear to be 4-aligned
-from `payload+1` (both bits offsets are ≡ 1 mod 4). That is a bounded piece of work and it
-would unlock every other field in this record, not just bits.
+Verified across 12 saves spanning two sessions — **exactly one landmark match in each**, and
+the values form a clean monotonic progression:
+
+```
+2877 → 2886 → 3791 → 4148 → 4148 → 5197 → 5239
+```
+
+ending on a figure confirmed on the in-game character sheet. Writing through the locator was
+confirmed in game twice, including on a save whose bits offset is 6104 rather than 6145, so
+it is the locator working and not a lucky constant.
+
+Editing is a Class 1 length-neutral poke — no size or pointer fixups.
+
+### Caveats
+
+- A **brand-new character** has no landmark match (its entry list is only 10 entries). The
+  tooling reports "not found" and disables the field rather than guessing.
+- The landmark includes `1161527296` (float `2992.0`), which *may* be character-specific. It
+  was constant across this character's whole playthrough. Dropping it from the signature makes
+  the match non-unique (4 hits), so it is kept — and the code **requires exactly one match**,
+  failing safe if another character's save differs.
+
+### Approaches that failed
+
+- **Fixed offset** — drifts on both sides. Offset from the record start moved 2125 → 2029
+  while offset from its end moved 7937 → 12358.
+- **String anchor** — the enclosing record contains no strings at all.
+- **Suffix marker** `2, 1, 64, 68353` — walking back over `[count][count × 12-byte entries]`
+  self-validates in principle, but matches `count = 0` spuriously whenever the preceding
+  `u32` is zero, and the marker is not unique.
+- **Constant-prefix signature** (the nine `u32` before bits) — 23–39 matches per save, and
+  absent entirely at the bits location in one save.
+- **Value search** — asking for the figure shown in game and matching it. Works, but it is
+  not a locator; realistic amounts happen to be unique while round numbers are not (100
+  matched eight times).
 
 ## Character name
 
