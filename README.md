@@ -3,6 +3,10 @@
 Recover **The Outer Worlds 2** saves from Xbox connected storage and write them back in the
 local Steam format — so Steam Cloud, Steam Deck, and GeForce Now can see them again.
 
+### [⬇ Download the app](https://github.com/swallace17/tow2-save-bridge/releases/latest)
+
+Unzip and run — nothing to install. Windows x64.
+
 > **The short version:** signing into an Xbox account in the Steam build diverts your saves
 > to Xbox's container store. The Steam save folder keeps receiving screenshots and nothing
 > else, so Steam Cloud syncs a folder of thumbnails. The save data is still on your disk,
