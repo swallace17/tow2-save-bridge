@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Markup;
 
 namespace TOW2SkillEditor;
 
@@ -221,9 +220,17 @@ public sealed partial class MainWindow : Window
             CloneFirst.IsEnabled = !autosave;
             if (autosave) CloneFirst.IsChecked = false;
 
-            RecordInfo.Text = $"{data.Magic} @{data.Record} · {data.PayloadLen} B";
+            string build = SaveIo.ReadBuild(slot);
+            RecordInfo.Text = $"{data.Magic} @{data.Record} · {data.PayloadLen} B · build {build}";
 
-            if (autosave)
+            // Every offset here was derived from one game build. Say so plainly if it differs.
+            if (!string.IsNullOrEmpty(build) && build != SaveIo.KnownBuild)
+                Say($"This save is from game build {build}; the offsets used here were derived "
+                  + $"from {SaveIo.KnownBuild}. A patch can move them. Test on a copy before "
+                  + "trusting an edit — the structural checks should refuse rather than write "
+                  + "to the wrong place, but do not rely on that alone.",
+                    InfoBarSeverity.Warning);
+            else if (autosave)
                 Say("Autosave — it cannot be copied, so edits apply to it directly.",
                     InfoBarSeverity.Warning);
             else
@@ -240,10 +247,10 @@ public sealed partial class MainWindow : Window
 
     // ------------------------------------------------------ Xbox -> Steam recovery
 
-    private sealed class XboxRow
+    // public so XAML data binding can reach the properties by reflection
+    public sealed class XboxRow
     {
         public SaveIo.XboxSave Save { get; init; } = null!;
-        public bool Selected { get; set; } = true;
         public string Title => Save.Character;
         public string Detail => Save.Display;
     }
@@ -274,15 +281,7 @@ public sealed partial class MainWindow : Window
             ItemsSource = rows,
             SelectionMode = ListViewSelectionMode.Multiple,
             MaxHeight = 260,
-            ItemTemplate = (DataTemplate)XamlReader.Load(
-                """
-                <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
-                  <StackPanel Padding="0,4" Spacing="1">
-                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" />
-                    <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.6" />
-                  </StackPanel>
-                </DataTemplate>
-                """)
+            ItemTemplate = (DataTemplate)((FrameworkElement)Content).Resources["XboxRowTemplate"]
         };
         foreach (var r in rows) list.SelectedItems.Add(r);
 
@@ -407,6 +406,7 @@ public sealed partial class MainWindow : Window
         }
     }
 }
+
 
 
 

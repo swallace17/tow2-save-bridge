@@ -106,7 +106,23 @@ public static class SaveIo
         MetaStringsWithPos(m).Select(s => s.Value).ToList();
 
     private const int NameIndex = 2;
+    private const int BuildIndex = 4;
     public const int MaxNameLength = 40;
+
+    /// <summary>
+    /// The game build every offset in this tool was derived from. A patch can move the
+    /// skill array, the self-pointers, or the bits landmark; the structural checks would
+    /// most likely catch that and refuse, but this makes the mismatch explicit rather
+    /// than relying on a guard firing.
+    /// </summary>
+    public const string KnownBuild = "1.2.0.1";
+
+    public static string ReadBuild(string slot)
+    {
+        var md = File.ReadAllBytes(Path.Combine(Root, slot, "Metadata.dat"));
+        var strings = MetaStringsWithPos(md);
+        return strings.Count > BuildIndex ? strings[BuildIndex].Value : "";
+    }
 
     public static string ReadName(string slot)
     {

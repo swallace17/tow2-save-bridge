@@ -13,6 +13,17 @@
 
     <Grid RowDefinitions="Auto,*,Auto">
 
+        <Grid.Resources>
+            <!-- compiled, not XamlReader.Load: runtime-parsed XAML fails in Release builds -->
+            <DataTemplate x:Key="XboxRowTemplate">
+                <StackPanel Padding="0,4" Spacing="1">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" />
+                    <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
+                </StackPanel>
+            </DataTemplate>
+        </Grid.Resources>
+
+
         <!-- title bar strip -->
         <Grid x:Name="AppTitleBar" Height="44" Grid.Row="0" Padding="16,0">
             <TextBlock VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold"

@@ -148,7 +148,12 @@ if(($cur | Where-Object { $_ -lt 0 -or $_ -gt 1000 }).Count){
     throw "values at the expected offsets don't look like skills ($($cur -join ',')) -- refusing to write"
 }
 
-Write-Host "$Slot   $magic record @$rec  len=$len" -ForegroundColor DarkGray
+$buildStr = @(Get-MetaStrings $mdPath)[4]
+$KNOWN_BUILD = '1.2.0.1'
+Write-Host "$Slot   $magic record @$rec  len=$len   build $buildStr" -ForegroundColor DarkGray
+if($buildStr -and $buildStr -cne $KNOWN_BUILD){
+    Write-Warning "This save is from game build $buildStr; the offsets here were derived from $KNOWN_BUILD. A patch can move them - test on a copy first."
+}
 Write-Host ""
 
 # ---------------------------------------------------------------- report / edit

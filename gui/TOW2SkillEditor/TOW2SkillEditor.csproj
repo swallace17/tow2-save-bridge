@@ -25,4 +25,20 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.*" />
   </ItemGroup>
 
+  <!--
+    `dotnet publish` does not carry the app's own compiled XAML (.xbf) or its resource
+    index (.pri) into the publish folder, though `dotnet build` emits them correctly.
+    Without them XAML cannot resolve and the app dies at startup with a stowed
+    exception (0xC000027B, E_FAIL in Microsoft.UI.Xaml.dll). Copy them explicitly.
+  -->
+  <Target Name="IncludeXamlArtifactsInPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <_XamlArtifact Include="$(OutputPath)*.xbf" />
+      <_XamlArtifact Include="$(OutputPath)$(AssemblyName).pri" />
+      <ResolvedFileToPublish Include="@(_XamlArtifact)"
+                             RelativePath="%(Filename)%(Extension)"
+                             CopyToPublishDirectory="Always" />
+    </ItemGroup>
+  </Target>
+
 </Project>
