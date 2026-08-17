@@ -14,6 +14,7 @@ param(
     [string]$Slot,
     [hashtable]$Set,
     [int]$Points = -1,
+    [int]$Bits = -1,
     [switch]$CloneFirst,
     [switch]$List,
     [switch]$Apply
@@ -41,6 +42,41 @@ function Deflate([byte[]]$b){
     $zs=New-Object IO.Compression.ZLibStream($o,[IO.Compression.CompressionLevel]::Optimal)
     $zs.Write($b,0,$b.Length); $zs.Dispose(); $o.ToArray()
 }
+# --- bits ------------------------------------------------------------------
+# Player.dat holds 84-byte entries: [u32 2][u32 1][u32 id][u32 0x00010B01][17 x u32].
+# Bits is payload[12] of one of them. The entry id is an allocation counter and shifts
+# between sessions, so anchor instead on a neighbouring entry with a constant payload
+# that sits exactly 154 bytes earlier.  See docs/04-player-data.md.
+$script:BitsLandmark = @(33554432, 1161527296, 0, 11, 256, 256)
+$script:BitsDelta    = 218
+
+function Get-LivePlayerDat([byte[]]$raw){
+    $s = [Text.Encoding]::Latin1.GetString($raw)
+    $m = [regex]::Matches($s, "\x0B\x00\x00\x00Player\.dat\x00")
+    if($m.Count -eq 0){ return $null }
+    $pre = $m[$m.Count-1].Index                       # LAST = live layer
+    [pscustomobject]@{ Payload = $pre+19; Size = [BitConverter]::ToInt32($raw,$pre+15) }
+}
+
+function Get-BitsOffset([byte[]]$raw, $live){
+    if(-not $live){ return -1 }
+    $found = -1; $count = 0
+    for($r=0; $r+84 -le $live.Size; $r++){
+        if([BitConverter]::ToInt32($raw,$live.Payload+$r) -ne 2){ continue }
+        if([BitConverter]::ToInt32($raw,$live.Payload+$r+4) -ne 1){ continue }
+        if([BitConverter]::ToInt32($raw,$live.Payload+$r+12) -ne 0x00010B01){ continue }
+        $ok = $true
+        for($k=0; $k -lt $script:BitsLandmark.Count; $k++){
+            if([BitConverter]::ToInt32($raw,$live.Payload+$r+16+4*(11+$k)) -ne $script:BitsLandmark[$k]){ $ok=$false; break }
+        }
+        if($ok){ $found=$r; $count++ }
+    }
+    if($count -ne 1){ return -1 }        # ambiguous or absent -> refuse
+    $off = $found + $script:BitsDelta
+    if($off+4 -gt $live.Size){ return -1 }
+    $off
+}
+
 function Get-MetaStrings([string]$path){
     $m=[IO.File]::ReadAllBytes($path); $s=[Text.Encoding]::Latin1.GetString($m)
     $out=@()
@@ -134,11 +170,24 @@ $curPts = $raw[$p+$PTS]
 $newPts = if($Points -ge 0){ $Points } else { $curPts }
 "  {0,-12} +{1,-5} {2,4}{3}" -f 'Points',$PTS,$curPts,$(if($newPts -ne $curPts){'  ->  {0}' -f $newPts}else{''})
 
+$live    = Get-LivePlayerDat $raw
+$bitsOff = Get-BitsOffset $raw $live
+if($bitsOff -ge 0){
+    $curBits = [BitConverter]::ToInt32($raw,$live.Payload+$bitsOff)
+    $newBits = if($Bits -ge 0){ $Bits } else { $curBits }
+    "  {0,-12} +{1,-5} {2,4}{3}" -f 'Bits',$bitsOff,$curBits,$(if($newBits -ne $curBits){'  ->  {0}' -f $newBits}else{''})
+} else {
+    $newBits = -1
+    Write-Host "  Bits         (landmark not found in this save -- field unavailable)" -ForegroundColor DarkGray
+    if($Bits -ge 0){ Write-Warning "-Bits was given but the field could not be located; it will not be changed." }
+}
+
 if($Set){
     $unknown = @($Set.Keys | Where-Object { $_ -notin $SKILLS })
     if($unknown.Count){ Write-Warning "unknown skill name(s): $($unknown -join ', ')" }
 }
-if(-not $changes.Count -and $newPts -eq $curPts){ Write-Host "`nnothing to change." -ForegroundColor DarkGray; return }
+$bitsChanged = ($bitsOff -ge 0 -and $newBits -ge 0 -and $newBits -ne $curBits)
+if(-not $changes.Count -and $newPts -eq $curPts -and -not $bitsChanged){ Write-Host "`nnothing to change." -ForegroundColor DarkGray; return }
 if(-not $Apply){ Write-Host "`nDRY RUN. Re-run with -Apply." -ForegroundColor Magenta; return }
 
 # ---------------------------------------------------------------- write
@@ -150,6 +199,7 @@ $before = $raw.Length
 foreach($c in $changes){ [Array]::Copy([BitConverter]::GetBytes([int]$c.New),0,$raw,$p+$c.Off,4) }
 if($newPts -gt 255){ throw "Points must be 0-255 (single byte)" }
 $raw[$p+$PTS] = [byte]$newPts
+if($bitsChanged){ [Array]::Copy([BitConverter]::GetBytes([int]$newBits),0,$raw,$live.Payload+$bitsOff,4) }
 if($raw.Length -ne $before){ throw "payload length changed -- aborting" }
 
 # in-place edits leave length alone, so the metadata size field must still match
@@ -164,6 +214,7 @@ $v = Inflate ([IO.File]::ReadAllBytes($sgPath))
 $bad = @()
 foreach($c in $changes){ if([BitConverter]::ToInt32($v,$p+$c.Off) -ne $c.New){ $bad += $c.Name } }
 if($v[$p+$PTS] -ne $newPts){ $bad += 'Points' }
+if($bitsChanged -and [BitConverter]::ToInt32($v,$live.Payload+$bitsOff) -ne $newBits){ $bad += 'Bits' }
 if($bad.Count){ throw "read-back mismatch: $($bad -join ', ')" }
 
 Write-Host "`nAPPLIED and verified. Backup: $bak" -ForegroundColor Green
