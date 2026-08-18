@@ -36,15 +36,22 @@ Perks, Traits, Flaws and Background appear as asset-path references in the
 but **that list is a class registry, not the acquired set** — it carries all 28 flaws in
 every save and its ordering is unstable. The real grant state has not been found.
 
-The next concrete step is a **tight save-pair**: save, take a perk, save again without moving,
-then diff with `lab/Diff-TOW2Save.ps1`. Two things make this tractable:
+The [spell list](04-player-data.md#the-spell-list--this-one-does-track-what-you-have) is the
+closest thing to real state found so far — it matches the character exactly, contains no
+flaws, and gains a perk's effect precisely when that perk is taken.
 
-- The class registry gives a known-good marker to check the diff against — the new perk's
-  asset path will appear there, so any *other* changed record in the same save is a candidate
-  for the actual grant state.
-- A save that carries a base layer already contains a free before/after pair, since the base
-  snapshot predates recent acquisitions. That is how the registry's behaviour was established
-  without playing at all.
+The **working model is that granting a perk needs two string inserts**: the class into the
+`PlayerInfoComponent` registry, and the effect into the spell list. Both are Class 2 edits.
+This is untested; a perk may also need an entry in the 84-byte entry list.
+
+The cheapest way to test it is a length-neutral swap rather than an insert: on a clone,
+overwrite one perk's asset path and class name with another perk of **identical string
+length**, and see whether the character sheet changes. That avoids all five fixups and answers
+whether these two lists are the grant state or merely reflect it.
+
+A tight save-pair — save, take a perk, save again — remains the definitive test, and would
+also reveal any third location. Note that a save carrying a base layer already contains a
+free before/after pair; that is how all of the above was established without playing at all.
 
 Traits and Background are set at character creation and never change, so a save-pair will not
 isolate them. The tractable approach there is a length-neutral swap of one asset path for

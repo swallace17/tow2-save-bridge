@@ -227,9 +227,54 @@ save carries 35 entries and 3 perks; the live layer has 36 and 4, differing by e
 `02_Perk_Reward_RegionCollection_Tier1` — a perk taken between the two snapshots. So a save
 file with a base layer contains its own before/after pair for free.
 
-**Where the actual grant state lives is not yet found.** It is presumably an array of
-instances or indices referencing these classes. Finding it needs a tight save-pair — save,
-take a perk, save again — diffed with `lab/Diff-TOW2Save.ps1`.
+## The spell list — this one does track what you have
+
+A **second** string region, roughly `+42200`–`+46800` in the same entry, holds
+`/Game/Blueprints/Spells/…` asset paths in the same `path` + `_C` class pairs. Unlike the
+class registry, its contents match the character exactly:
+
+```
+Spell_SuaveTrait  Spell_WittyTrait  Spell_SicklyTrait          3 traits  -> 3 spells
+Spell_Perk_SpaceRanger                                          }
+0220_Spell_Perk_ScrabblesPlushie                                }  4 perks -> 4 effects
+02_Spell_Perk_RegionCollection_Tier1                            }
+Spell_Player_UnlockPickPocketing   (Pickpocket's effect)        }
+Spell_ExplosivesDamage, Spell_HackDamageToAutomechs, …          skill effects
+Spell_Helmet_…, Spell_SMG_…, Spell_ArmorMod_…                   equipped gear
+```
+
+**No flaw spells at all**, despite 28 flaws sitting in the class registry — independent
+confirmation that the registry is not the acquired set.
+
+It also tracks acquisition precisely. Diffing the base and live layers of a single save:
+
+```
+base (3 perks)  29 spells
+live (4 perks)  32 spells
+only in live:   Spell_Helmet_Tank_T0, Spell_Helmet_PremiumMoonman,
+                02_Spell_Perk_RegionCollection_Tier1
+```
+
+The perk's spell appears exactly when the perk was taken; the other two are helmets equipped
+between the snapshots. Nothing spurious in either direction.
+
+This reads as the SpellManagerComponent's active effects, and it is the closest thing found
+so far to real character state.
+
+### Working model for granting a perk — untested
+
+A perk plausibly needs **two** insertions:
+
+1. its class into the `PlayerInfoComponent` registry (`path` + `_C` pair)
+2. its effect into the spell list (`path` + `_C` pair)
+
+Both are string inserts, so both are **Class 2 edits** needing the full five fixups from
+[05 — Editing rules](05-editing-rules.md). Note the self-pointer at `Player.dat +32` targets
+43472, which sits *between* the two regions — an insert at the registry (~23179) shifts it,
+an insert in the spell list (~44816) does not.
+
+This has **not been tested in game**. A perk may also need an entry in the 84-byte entry list
+or elsewhere; only trying it will say.
 
 Note also that adding to this list would be a **Class 2 edit**: entries are 90–120 bytes of
 string data, so an insert changes the payload length and needs the full five fixups from
